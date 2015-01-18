@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 	"strconv"
+	"time"
 	)
 
 /*Compare and Swap values if versions match*/
@@ -97,7 +98,10 @@ func casValue(clientConn net.Conn,command []string) {
 		version++
 
 		//Add value to keystore
-		m[key] = value{[]byte(datastring),numbytes,version,exptime}
+		m[key] = value{[]byte(datastring),numbytes,version,exptime,time.Now()}
+	
+		//Inform expiryHandler
+		go dataStoreChanged(key,MODIFY)
 
 		//Reply if required
 		if !noreply {

@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 	)
 
 const PORT = "9000"
@@ -14,6 +15,7 @@ const DEBUG = true
 type value struct { 
 	val []byte
 	numbytes,version, exptime int64
+	addTime time.Time
 }
 
 var m map[string] value
@@ -37,6 +39,9 @@ func main() {
 
 	fmt.Println("Server started..")
 
+	//Wake up expiry handler
+	go expiryHandler()
+	
 	for {
 		//Wait for connections from clients
 		client,err := conn.Accept()

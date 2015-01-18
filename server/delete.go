@@ -23,6 +23,9 @@ func deleteValue(clientConn net.Conn,command []string) {
 
 	// If value is present delete it
 	delete(m,key)
+
+	//Inform expiryHandler
+	go dataStoreChanged(key,DELETE)
 		
 	clientConn.Write([]byte("DELETED\r\n"))
 }

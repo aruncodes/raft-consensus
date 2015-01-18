@@ -4,6 +4,7 @@ import (
 	"net"
 	"strings"
 	"strconv"
+	"time"
 	)
 
 /* Add Values to datastore*/
@@ -75,7 +76,10 @@ func setValue(clientConn net.Conn,command []string) {
 	//Trim \r\n from end
 	datastring := strings.TrimRight(string(buf),"\n\r\000")
 	//Add value to keystore
-	m[key] = value{[]byte(datastring),numbytes,1000,exptime}
+	m[key] = value{[]byte(datastring),numbytes,1000,exptime,time.Now()}
+
+	//Inform expiryHandler
+	go dataStoreChanged(key,ADD)
 
 	//Reply if required
 	if !noreply {
