@@ -12,7 +12,7 @@ func deleteValue(clientConn net.Conn,command []string) {
 	}
 
 	key := command[1]
-
+	
 	//Check if key available in data store
 	_,ok := m[key]
 

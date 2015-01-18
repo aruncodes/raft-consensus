@@ -62,10 +62,10 @@ func handleClient(clientConn net.Conn) {
 	//Close connection when client is done
 	defer clientConn.Close()
 
-	buf := make([]byte, 1024)
 
 	// Server the client till he exits
 	for {
+		buf := make([]byte, 512)
 		_, err := clientConn.Read(buf)
 
 		if err != nil {

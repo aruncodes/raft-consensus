@@ -21,12 +21,22 @@ func setValue(clientConn net.Conn,command []string) {
 	//No reply
 	noreply := false	
 
-	if len(command) == 5 && command[4] == "noreply" {
-		noreply = true
+	if len(command) == 5 {
+		if command[4] == "noreply" {
+			noreply = true
+		} else {
+			//Invalid syntax
+			clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
+			return
+		}
+	} else if len(command) > 5 {
+		//Invalid syntax
+		clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
+		return	
 	}
 
 	//Expiry Time
-	exptime, err := strconv.ParseInt(command[2],10,10)
+	exptime, err := strconv.ParseInt(command[2],10,64)
 	if err != nil {
 		debug("Invalid expiry time specified.")
 		clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
@@ -39,7 +49,7 @@ func setValue(clientConn net.Conn,command []string) {
 	}
 
 	//Number of Bytes
-	numbytes, err := strconv.ParseInt(command[3],10,10)
+	numbytes, err := strconv.ParseInt(command[3],10,64)
 	if err != nil {
 		debug("Invalid number of bytes specified.")
 		clientConn.Write([]byte("ERR_CMD_ERR\r\n"))

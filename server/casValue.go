@@ -25,10 +25,10 @@ func casValue(clientConn net.Conn,command []string) {
 		return
 	}
 
-	version, err := strconv.ParseInt(command[3],10,10)
+	version, err := strconv.ParseInt(command[3],10,64)
 	if err != nil {
 		clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
-		debug("Invalid version specified.")
+		debug("Invalid version specified :" + command[3])
 		return
 	}
 
@@ -39,12 +39,22 @@ func casValue(clientConn net.Conn,command []string) {
 		//No reply
 		noreply := false	
 
-		if len(command) == 6 && command[5] == "noreply" {
-			noreply = true
+		if len(command) == 6 {
+			if command[5] == "noreply" {
+				noreply = true
+			} else {
+				//Invalid syntax
+				clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
+				return
+			}
+		} else if len(command) > 6 {
+			//Invalid syntax
+			clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
+			return	
 		}
 
 		//Expiry Time
-		exptime, err := strconv.ParseInt(command[2],10,10)
+		exptime, err := strconv.ParseInt(command[2],10,64)
 		if err != nil {
 			clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
 			debug("Invalid expiry time specified.")
@@ -57,7 +67,7 @@ func casValue(clientConn net.Conn,command []string) {
 		}
 
 		//Number of Bytes
-		numbytes, err := strconv.ParseInt(command[4],10,10)
+		numbytes, err := strconv.ParseInt(command[4],10,64)
 		if err != nil {
 			clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
 			debug("Invalid number of bytes specified.")
@@ -83,6 +93,9 @@ func casValue(clientConn net.Conn,command []string) {
 		//Trim \r\n from end
 		datastring := strings.TrimRight(string(buf),"\n\r\000")
 
+		//Increment version
+		version++
+
 		//Add value to keystore
 		m[key] = value{[]byte(datastring),numbytes,version,exptime}
 
@@ -92,6 +105,7 @@ func casValue(clientConn net.Conn,command []string) {
 		}
 
 	} else {
+		//Versions do not match
 		clientConn.Write([]byte("ERR_VERSION\r\n"))
 		return
 	}
