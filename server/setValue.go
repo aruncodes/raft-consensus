@@ -5,10 +5,12 @@ import (
 	"strings"
 	"strconv"
 	"time"
+	"math/rand"
+	"fmt"
 	)
 
 /* Add Values to datastore*/
-func setValue(clientConn net.Conn,command []string) {
+func setValue(clientConn net.Conn,command []string,data string) {
 
 	if len(command) < 4 {
 		debug("Insufficient arguments")
@@ -64,25 +66,20 @@ func setValue(clientConn net.Conn,command []string) {
 
 	// Validation completed
 
-	//Read value
-	buf := make([]byte,numbytes)
-	_, err = clientConn.Read(buf)
-
-	if err != nil {
-		debug("Read Error:"+err.Error())
-		clientConn.Write([]byte("ERR_INTERNAL\r\n"))
-	}
-	
 	//Trim \r\n from end
-	datastring := strings.TrimRight(string(buf),"\n\r\000")
+	datastring := strings.TrimRight(data,"\n\r\000")
+
+	//Get a random number as version
+	version := int64(rand.Intn(10000))
+
 	//Add value to keystore
-	m[key] = value{[]byte(datastring),numbytes,1000,exptime,time.Now()}
+	m[key] = value{[]byte(datastring),numbytes,version,exptime,time.Now()}
 
 	//Inform expiryHandler
 	go dataStoreChanged(key,ADD)
 
 	//Reply if required
 	if !noreply {
-		clientConn.Write([]byte("OK 1000\r\n"))
+		clientConn.Write([]byte(fmt.Sprintf("OK %d\r\n",version)))
 	}
 }

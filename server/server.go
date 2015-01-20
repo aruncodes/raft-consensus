@@ -1,3 +1,9 @@
+/*
+	A Simple Memcached Clone written in Go
+
+	Author: Arun Babu
+*/
+
 package main
 
 import (
@@ -8,16 +14,31 @@ import (
 	"time"
 	)
 
+// Port in which the server should listen to
 const PORT = "9000"
 
+//Should the server print debug messages while handling client
 const DEBUG = true
 
+//Value of the key-value pair to be stored in datastore
 type value struct { 
 	val []byte
 	numbytes,version, exptime int64
-	addTime time.Time
+	addTime time.Time 	//Actual time of addition for expiry handling
 }
 
+/* This bundle is sent into queue for write requests*/
+type dataStoreWriteBundle struct {
+	clientConn 	net.Conn
+	command		[]string
+	data 		string
+	ack			chan bool // The handle client will wait on this channel for ack
+}
+
+//Write queue
+var writeQueue chan dataStoreWriteBundle
+
+//Data store as a map
 var m map[string] value
 
 func main() {
@@ -37,11 +58,18 @@ func main() {
 	//Initialize datastore
 	m = make(map[string] value)
 
-	fmt.Println("Server started..")
-
 	//Wake up expiry handler
 	go expiryHandler()
+
+	//Initialize write queue
+	writeQueue = make(chan dataStoreWriteBundle)
 	
+	//Wake up write handler
+	go dataStoreWriteHandler()
+	
+	fmt.Println("Server started..")
+
+
 	for {
 		//Wait for connections from clients
 		client,err := conn.Accept()
@@ -51,8 +79,8 @@ func main() {
 			os.Exit(1)
 		}
 
+		//Handle each client in a seperate 
 		go handleClient(client)
-		// break
 	}
 
 }
@@ -82,23 +110,61 @@ func handleClient(clientConn net.Conn) {
 		// debug("Read Msg: |",string(buf)," |")
 
 		command := strings.Split(strings.Trim(string(buf),"\n \r\000")," ")
-
 		switch command[0] {
-			case "set" : //fmt.Println("Command : set | Arguments :",command[1:])
-						setValue(clientConn,command)
-			case "get" : //fmt.Println("Command : get | Arguments :",command[1:])
-						getValueMeta(clientConn,command,"value")
-			case "getm" : //fmt.Println("Command : getm | Arguments :",command[1:])
-						getValueMeta(clientConn,command,"meta")
-			case "cas" : //fmt.Println("Command : cas | Arguments :",command[1:])
-						casValue(clientConn,command)
-			case "delete" : //fmt.Println("Command : delete | Arguments :",command[1:])
-						deleteValue(clientConn,command)
+			case "get" 	:getValueMeta(clientConn,command,"value")
+			case "getm" :getValueMeta(clientConn,command,"meta")
 
+			case "set","cas" :	
+						data := readDataLine(clientConn) // These commands have data line
+
+						ack	:= make(chan bool) 
+						//Send the bundle into write queue
+						writeQueue <- dataStoreWriteBundle{clientConn,command,data,ack}
+						<- ack // Wait for ack after operation
+			case "delete" :
+						ack	:= make(chan bool) 
+						writeQueue <- dataStoreWriteBundle{clientConn,command,"",ack}
+						<- ack // Wait for ack after operation
+			
 			default: clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
 		}
 
-		fmt.Println(m);
+		if DEBUG {
+			fmt.Println(m);
+		}
+	}
+}
+
+func readDataLine(clientConn net.Conn) string {
+	//Read data line
+	buf := make([]byte, 1024)
+	_, err := clientConn.Read(buf)
+
+	if err != nil {
+		debug("Read Error:"+err.Error())
+		clientConn.Write([]byte("ERR_INTERNAL\r\n"))
+	}
+
+	return string(buf)
+}
+
+//Make sure the writes are sequential
+func dataStoreWriteHandler() {
+
+	for {
+
+		//Receive write bundle from queue and process sequentially
+		writeBundle := <- writeQueue
+
+		debug("Write received")
+		switch writeBundle.command[0] {
+			case "set" : setValue(writeBundle.clientConn,writeBundle.command,writeBundle.data)
+			case "cas" : casValue(writeBundle.clientConn,writeBundle.command,writeBundle.data)
+			case "delete" : deleteValue(writeBundle.clientConn,writeBundle.command)
+		}
+
+		//Send ACK
+		writeBundle.ack <- true
 	}
 }
 

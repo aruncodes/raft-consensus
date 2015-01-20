@@ -6,8 +6,8 @@ import (
 	)
 
 func getValueMeta(clientConn net.Conn,command []string,mode string) {
-	if len(command) < 2 {
-		debug("Insufficient arguments")
+	if len(command) != 2 {
+		debug("Arguments invalid")
 		clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
 		return
 	}

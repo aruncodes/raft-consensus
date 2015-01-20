@@ -5,8 +5,8 @@ import (
 	)
 
 func deleteValue(clientConn net.Conn,command []string) {
-	if len(command) < 2 {
-		debug("Insufficient arguments")
+	if len(command) != 2 {
+		debug("Arguments invalid")
 		clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
 		return
 	}

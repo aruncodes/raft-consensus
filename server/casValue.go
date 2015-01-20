@@ -9,7 +9,7 @@ import (
 	)
 
 /*Compare and Swap values if versions match*/
-func casValue(clientConn net.Conn,command []string) {
+func casValue(clientConn net.Conn,command []string,data string) {
 	if len(command) < 5 {
 		debug("Insufficient arguments")
 		clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
@@ -82,17 +82,9 @@ func casValue(clientConn net.Conn,command []string) {
 
 		// Validation completed
 
-		//Read value
-		buf := make([]byte,numbytes)
-		_, err = clientConn.Read(buf)
-
-		if err != nil {
-			debug("Read Error:"+err.Error())
-			clientConn.Write([]byte("ERR_INTERNAL\r\n"))
-		}
-		
+	
 		//Trim \r\n from end
-		datastring := strings.TrimRight(string(buf),"\n\r\000")
+		datastring := strings.TrimRight(data,"\n\r\000")
 
 		//Increment version
 		version++

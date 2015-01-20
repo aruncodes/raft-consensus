@@ -33,9 +33,9 @@ func expiryHandler() {
 			//Wait for the duration
 			running = true
 			debug(fmt.Sprintf("ExpiryHandler: sleeping for %v",duration))
-			<- expiryTimer.C
+			<- expiryTimer.C // Sleep 
 
-			//Check if version changed
+			//Check if version changed just in case something goes wrong
 			if m[nextKeyToExpire].version == nextKeyVersion {
 				delete(m,nextKeyToExpire)
 				debug("ExpiryHandler : "+nextKeyToExpire + " expired and removed")
@@ -70,6 +70,9 @@ func dataStoreChanged(key string, mode int) {
 		wakeup <- true
 		return
 	}
+
+	//expiryHandler is waiting for timer to expire,
+	// so update the next key to expire and change the timer
 
 	if mode == ADD || mode == MODIFY{
 		val := m[key]
