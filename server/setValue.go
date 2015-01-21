@@ -64,6 +64,15 @@ func setValue(clientConn net.Conn,command []string,data string) {
 		return	
 	}
 
+	//Check i already exist and rewriting
+	_,ok := m[key]
+
+	if ok == true {
+		debug("Value already exists.")
+		clientConn.Write([]byte("ERR_VERSION\r\n"))
+		return
+	}
+
 	// Validation completed
 
 	//Trim \r\n from end

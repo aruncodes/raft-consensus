@@ -18,7 +18,7 @@ import (
 const PORT = "9000"
 
 //Should the server print debug messages while handling client
-const DEBUG = true
+const DEBUG = false
 
 //Value of the key-value pair to be stored in datastore
 type value struct { 
@@ -107,7 +107,7 @@ func handleClient(clientConn net.Conn) {
 			break
 		}
 
-		// debug("Read Msg: |",string(buf)," |")
+		// debug("Read Msg: |"+string(buf)+" |")
 
 		command := strings.Split(strings.Trim(string(buf),"\n \r\000")," ")
 		switch command[0] {
