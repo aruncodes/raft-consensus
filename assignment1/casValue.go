@@ -3,32 +3,32 @@ package main
 import (
 	"fmt"
 	"net"
-	"strings"
 	"strconv"
+	"strings"
 	"time"
-	)
+)
 
 /*Compare and Swap values if versions match*/
-func casValue(clientConn net.Conn,command []string,data string) {
+func casValue(clientConn net.Conn, command []string, data string) {
 	if len(command) < 5 {
 		debug("Insufficient arguments")
-		clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
+		WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
 		return
 	}
 
 	key := command[1]
 
 	//Check if key available in data store
-	val,ok := m[key]
+	val, ok := m[key]
 
 	if ok == false {
-		clientConn.Write([]byte("ERR_NOT_FOUND\r\n"))
+		WriteTCP(clientConn, "ERR_NOT_FOUND\r\n")
 		return
 	}
 
-	version, err := strconv.ParseInt(command[3],10,64)
+	version, err := strconv.ParseInt(command[3], 10, 64)
 	if err != nil {
-		clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
+		WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
 		debug("Invalid version specified :" + command[3])
 		return
 	}
@@ -38,71 +38,75 @@ func casValue(clientConn net.Conn,command []string,data string) {
 		// Validation
 
 		//No reply
-		noreply := false	
+		noreply := false
 
 		if len(command) == 6 {
 			if command[5] == "noreply" {
 				noreply = true
 			} else {
 				//Invalid syntax
-				clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
+				WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
 				return
 			}
 		} else if len(command) > 6 {
 			//Invalid syntax
-			clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
-			return	
+			WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
+			return
 		}
 
 		//Expiry Time
-		exptime, err := strconv.ParseInt(command[2],10,64)
+		exptime, err := strconv.ParseInt(command[2], 10, 64)
 		if err != nil {
-			clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
+			WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
 			debug("Invalid expiry time specified.")
 			return
 		}
 		if exptime < 0 {
-			clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
+			WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
 			debug("Expiry time cannot be negative.")
-			return	
+			return
 		}
 
 		//Number of Bytes
-		numbytes, err := strconv.ParseInt(command[4],10,64)
+		numbytes, err := strconv.ParseInt(command[4], 10, 64)
 		if err != nil {
-			clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
+			WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
 			debug("Invalid number of bytes specified.")
 			return
 		}
 		if numbytes < 1 {
-			clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
+			WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
 			debug("Number of bytes must be positive.")
-			return	
+			return
 		}
 
 		// Validation completed
 
-	
 		//Trim \r\n from end
-		datastring := strings.TrimRight(data,"\n\r\000")
+		datastring := strings.TrimRight(data, "\n\r\000")
+
+		//Trim datastring to numbytes length
+		if int64(len(datastring)) > numbytes {
+			datastring = datastring[:numbytes]
+		}
 
 		//Increment version
 		version++
 
 		//Add value to keystore
-		m[key] = value{[]byte(datastring),numbytes,version,exptime,time.Now()}
-	
+		m[key] = value{[]byte(datastring), numbytes, version, exptime, time.Now()}
+
 		//Inform expiryHandler
-		go dataStoreChanged(key,MODIFY)
+		go dataStoreChanged(key, MODIFY)
 
 		//Reply if required
 		if !noreply {
-			clientConn.Write([]byte(fmt.Sprintf("OK %d\r\n",version)))
+			WriteTCP(clientConn, fmt.Sprintf("OK %d\r\n", version))
 		}
 
 	} else {
 		//Versions do not match
-		clientConn.Write([]byte("ERR_VERSION\r\n"))
+		WriteTCP(clientConn, "ERR_VERSION\r\n")
 		return
 	}
 }

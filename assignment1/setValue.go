@@ -1,20 +1,20 @@
 package main
 
 import (
-	"net"
-	"strings"
-	"strconv"
-	"time"
-	"math/rand"
 	"fmt"
-	)
+	"math/rand"
+	"net"
+	"strconv"
+	"strings"
+	"time"
+)
 
 /* Add Values to datastore*/
-func setValue(clientConn net.Conn,command []string,data string) {
+func setValue(clientConn net.Conn, command []string, data string) {
 
 	if len(command) < 4 {
 		debug("Insufficient arguments")
-		clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
+		WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
 		return
 	}
 	key := command[1]
@@ -22,73 +22,78 @@ func setValue(clientConn net.Conn,command []string,data string) {
 	// Validation
 
 	//No reply
-	noreply := false	
+	noreply := false
 
 	if len(command) == 5 {
 		if command[4] == "noreply" {
 			noreply = true
 		} else {
 			//Invalid syntax
-			clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
+			WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
 			return
 		}
 	} else if len(command) > 5 {
 		//Invalid syntax
-		clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
-		return	
+		WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
+		return
 	}
 
 	//Expiry Time
-	exptime, err := strconv.ParseInt(command[2],10,64)
+	exptime, err := strconv.ParseInt(command[2], 10, 64)
 	if err != nil {
 		debug("Invalid expiry time specified.")
-		clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
+		WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
 		return
 	}
 	if exptime < 0 {
 		debug("Expiry time cannot be negative.")
-		clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
-		return	
+		WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
+		return
 	}
 
 	//Number of Bytes
-	numbytes, err := strconv.ParseInt(command[3],10,64)
+	numbytes, err := strconv.ParseInt(command[3], 10, 64)
 	if err != nil {
 		debug("Invalid number of bytes specified.")
-		clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
+		WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
 		return
 	}
 	if numbytes < 1 {
 		debug("Number of bytes must be positive.")
-		clientConn.Write([]byte("ERR_CMD_ERR\r\n"))
-		return	
+		WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
+		return
 	}
 
 	//Check i already exist and rewriting
-	_,ok := m[key]
+	_, ok := m[key]
 
 	if ok == true {
 		debug("Value already exists.")
-		clientConn.Write([]byte("ERR_VERSION\r\n"))
+		WriteTCP(clientConn, "ERR_VERSION\r\n")
 		return
 	}
 
 	// Validation completed
 
 	//Trim \r\n from end
-	datastring := strings.TrimRight(data,"\n\r\000")
+	datastring := strings.TrimRight(data, "\n\r\000")
 
 	//Get a random number as version
 	version := int64(rand.Intn(10000))
 
+	//Trim datastring to numbytes length
+	if int64(len(datastring)) > numbytes {
+		datastring = datastring[:numbytes]
+	}
+
 	//Add value to keystore
-	m[key] = value{[]byte(datastring),numbytes,version,exptime,time.Now()}
+	m[key] = value{[]byte(datastring), numbytes, version, exptime, time.Now()}
 
 	//Inform expiryHandler
-	go dataStoreChanged(key,ADD)
+	go dataStoreChanged(key, ADD)
 
 	//Reply if required
 	if !noreply {
-		clientConn.Write([]byte(fmt.Sprintf("OK %d\r\n",version)))
+		WriteTCP(clientConn, fmt.Sprintf("OK %d\r\n", version))
 	}
 }

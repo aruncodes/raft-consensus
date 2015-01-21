@@ -1,8 +1,8 @@
 package main
 
 import (
-	"time"
 	"fmt"
+	"time"
 )
 
 var expiryTimer *time.Timer
@@ -25,20 +25,20 @@ func expiryHandler() {
 
 		// if there is some values to expire
 		if duration != -1 {
-			expiryTimer = time.NewTimer( duration );
+			expiryTimer = time.NewTimer(duration)
 
 			//Set expiry time for others reference
 			timerExpiryTime = time.Now().Add(duration)
 
 			//Wait for the duration
 			running = true
-			debug(fmt.Sprintf("ExpiryHandler: sleeping for %v",duration))
-			<- expiryTimer.C // Sleep 
+			debug(fmt.Sprintf("ExpiryHandler: sleeping for %v", duration))
+			<-expiryTimer.C // Sleep
 
 			//Check if version changed just in case something goes wrong
 			if m[nextKeyToExpire].version == nextKeyVersion {
-				delete(m,nextKeyToExpire)
-				debug("ExpiryHandler : "+nextKeyToExpire + " expired and removed")
+				delete(m, nextKeyToExpire)
+				debug("ExpiryHandler : " + nextKeyToExpire + " expired and removed")
 			}
 			//Reset expiry for finding new
 			nextKeyToExpire = ""
@@ -48,11 +48,11 @@ func expiryHandler() {
 			// Wait for dataStoreChanged() to wake up
 			debug("ExpiryHandler going to sleep..")
 			running = false
-			<- wakeup
+			<-wakeup
 			debug("ExpiryHandler woke up..")
 		}
 	}
-	
+
 }
 
 //Mode of data store changes
@@ -64,9 +64,9 @@ const (
 
 func dataStoreChanged(key string, mode int) {
 
-	debug("Data store changed :"+key)
+	debug("Data store changed :" + key)
 	//If handler is not running, just wake it up and exit
-	if ! running {
+	if !running {
 		wakeup <- true
 		return
 	}
@@ -74,11 +74,11 @@ func dataStoreChanged(key string, mode int) {
 	//expiryHandler is waiting for timer to expire,
 	// so update the next key to expire and change the timer
 
-	if mode == ADD || mode == MODIFY{
+	if mode == ADD || mode == MODIFY {
 		val := m[key]
 
 		//Expiry time of value
-		expiryTime := val.addTime.Add(time.Duration(val.exptime)*time.Second)
+		expiryTime := val.addTime.Add(time.Duration(val.exptime) * time.Second)
 
 		//If the value expires before current timer, update timer
 		if expiryTime.Before(timerExpiryTime) {
@@ -86,7 +86,7 @@ func dataStoreChanged(key string, mode int) {
 			remainingTime := expiryTime.Sub(time.Now())
 
 			//update timer with remaning time for this key-value pair
-			debug("Timer reset for "+key)
+			debug("Timer reset for " + key)
 			expiryTimer.Reset(remainingTime)
 
 			//update parameters
@@ -109,8 +109,8 @@ func dataStoreChanged(key string, mode int) {
 	}
 }
 
-func findNextKeyToExpire() (key string,version int64,exptime time.Duration) {
-	
+func findNextKeyToExpire() (key string, version int64, exptime time.Duration) {
+
 	//Iterate and find out least expiry key
 
 	var nextKeyToExpire string = ""
@@ -118,7 +118,7 @@ func findNextKeyToExpire() (key string,version int64,exptime time.Duration) {
 	var shortestDuration time.Duration = -1
 
 	currentTime := time.Now()
-	for key,val := range m {
+	for key, val := range m {
 
 		if val.exptime == 0 {
 			//Never expire
@@ -126,7 +126,7 @@ func findNextKeyToExpire() (key string,version int64,exptime time.Duration) {
 		}
 		key = key
 		//Expiry time of value
-		expiryTime := val.addTime.Add(time.Duration(val.exptime)*time.Second)
+		expiryTime := val.addTime.Add(time.Duration(val.exptime) * time.Second)
 
 		//Remaning time for the value to expire
 		remainingTime := expiryTime.Sub(currentTime)
@@ -142,8 +142,8 @@ func findNextKeyToExpire() (key string,version int64,exptime time.Duration) {
 			keyVersion = val.version
 		}
 
-		debug(fmt.Sprintf("Shortest :%s Time: %v",key,shortestDuration))
-	}	
+		debug(fmt.Sprintf("Shortest :%s Time: %v", key, shortestDuration))
+	}
 
-	return nextKeyToExpire,keyVersion,shortestDuration
+	return nextKeyToExpire, keyVersion, shortestDuration
 }

@@ -11,8 +11,8 @@ This is a version controlled key-value pair store written in GO. It stores ASCII
 You can install the server by executing the following commands.
 *You need to have golang installed.*
 ```shell
-go get github.com/aruncodes/memcached-golang
-go install github.com/aruncodes/memcached-golang
+go get github.com/aruncodes/cs733/assignment1
+go install github.com/aruncodes/cs733/assignment1
 ./bin/server
 ```
 
@@ -153,5 +153,5 @@ The server includes an expiry handler which removes a key value pair when its ex
 ####How to test server
 The server is built with go's testing mechanism. You can test the server by executing
 ```shell
-go test github.com/aruncodes/memcached-golang
+go test github.com/aruncodes/cs733/assignment1
 ```
