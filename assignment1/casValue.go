@@ -94,7 +94,7 @@ func casValue(clientConn net.Conn, command []string, data string) {
 		version++
 
 		//Add value to keystore
-		m[key] = value{[]byte(datastring), numbytes, version, exptime, time.Now()}
+		m[key] = value{[]byte(datastring), numbytes, version, exptime}
 
 		//Inform expiryHandler
 		sendExpiry := func() {
@@ -103,7 +103,9 @@ func casValue(clientConn net.Conn, command []string, data string) {
 		}
 
 		//Set expiry timer
-		time.AfterFunc(time.Duration(exptime)*time.Second, sendExpiry)
+		if(exptime > 0) {
+			time.AfterFunc(time.Duration(exptime)*time.Second, sendExpiry)
+		}
 
 		//Reply if required
 		if !noreply {

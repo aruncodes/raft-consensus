@@ -1,7 +1,7 @@
 /*
 	A Simple Memcached Clone written in Go
 
-	Author: Arun Babu
+	Author: Arun Babu (143050032)
 */
 
 package main
@@ -11,7 +11,7 @@ import (
 	"net"
 	"os"
 	"strings"
-	"time"
+	"bufio"
 )
 
 // Port in which the server should listen to
@@ -24,7 +24,6 @@ const DEBUG = false
 type value struct {
 	val                        []byte
 	numbytes, version, exptime int64
-	addTime                    time.Time //Actual time of addition for expiry handling
 }
 
 /* This bundle is sent into queue for write requests*/
@@ -58,11 +57,8 @@ func main() {
 	//Initialize datastore
 	m = make(map[string]value)
 
-	//Wake up expiry handler
-	// go expiryHandler()
-
 	//Initialize write queue
-	writeQueue = make(chan dataStoreWriteBundle)
+	writeQueue = make(chan dataStoreWriteBundle,10)
 
 	//Wake up write handler
 	go dataStoreWriteHandler()
@@ -94,20 +90,22 @@ func handleClient(clientConn net.Conn) {
 	//Close connection when client is done
 	defer clientConn.Close()
 
+	//Input reader
+	reader := bufio.NewReader(clientConn)
+
 	// Server the client till he exits
 	for {
-		buf := make([]byte, 512)
-		_, err := clientConn.Read(buf)
+
+		buf,err := reader.ReadString('\n')
 
 		if err != nil {
-			debug("Read Error:" + err.Error())
+			debug("Command Read Error:" + err.Error())
 			WriteTCP(clientConn, "ERR_INTERNAL\r\n")
-			break
+			return 
 		}
-
 		// debug("Read Msg: |"+string(buf)+" |")
 
-		command := strings.Split(strings.Trim(string(buf), "\n \r\000"), " ")
+		command := strings.Split(strings.Trim(buf, "\n \r\000"), " ")
 		switch command[0] {
 		case "get":
 			getValueMeta(clientConn, command, "value")
@@ -115,7 +113,12 @@ func handleClient(clientConn net.Conn) {
 			getValueMeta(clientConn, command, "meta")
 
 		case "set", "cas":
-			data := readDataLine(clientConn) // These commands have data line
+			data,err := reader.ReadString('\n')	// These commands have data line
+			if err != nil {
+				debug("Data Read Error:" + err.Error())
+				WriteTCP(clientConn, "ERR_INTERNAL\r\n")
+				return 
+			}
 
 			ack := make(chan bool)
 			//Send the bundle into write queue
@@ -130,24 +133,12 @@ func handleClient(clientConn net.Conn) {
 			WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
 		}
 
-		if DEBUG {
+		if DEBUG { //Print map as debug
 			fmt.Println(m)
 		}
 	}
 }
 
-func readDataLine(clientConn net.Conn) string {
-	//Read data line
-	buf := make([]byte, 1024)
-	_, err := clientConn.Read(buf)
-
-	if err != nil {
-		debug("Read Error:" + err.Error())
-		WriteTCP(clientConn, "ERR_INTERNAL\r\n")
-	}
-
-	return string(buf)
-}
 
 func WriteTCP(clientConn net.Conn, data string) {
 	//Write to TCP connection
@@ -174,7 +165,7 @@ func dataStoreWriteHandler() {
 		case "delete":
 			deleteValue(writeBundle.clientConn, writeBundle.command)
 		case "expire":
-			expiryHandler2(writeBundle.command)
+			expiryHandler(writeBundle.command)
 		}
 
 		//Send ACK

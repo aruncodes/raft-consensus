@@ -4,7 +4,7 @@ import (
 	"strconv"
 )
 
-func expiryHandler2(command []string) {
+func expiryHandler(command []string) {
 
 	key := command[1]
 	version, err := strconv.ParseInt(command[2], 10, 64)

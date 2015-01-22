@@ -23,6 +23,8 @@ var rrp = []RequestResponsePair{
 	{"get arun", "", "VALUE 100\r\nmy name is arun"},      //Get the set vairable
 	{"delete babu", "", "ERR_NOT_FOUND"},                  //Delete a non existing key
 	{"delete arun", "", "DELETED"},                        //Delete existing key
+	{"djsbkv", "", "ERR_CMD_ERR"},                        //Command error
+	{"set arun a10 100", "my name is arun", "ERR_CMD_ERR"},         //synatx error
 
 }
 
@@ -80,6 +82,7 @@ func performRRPairs(t *testing.T, conn net.Conn) {
 	}
 }
 
+var key1_version string
 func checkVersionDependentCommands(t *testing.T, conn net.Conn) {
 	//Check 'cas' and 'getm' since they depend of version
 
@@ -96,7 +99,7 @@ func checkVersionDependentCommands(t *testing.T, conn net.Conn) {
 
 	t.Log("Testing compare and swap")
 	//Perform CAS
-	TCPWrite(t, conn, "cas key1 15 "+version+" 120")
+	TCPWrite(t, conn, "cas key1 0 "+version+" 120")
 	time.Sleep(10 * time.Millisecond)
 	TCPWrite(t, conn, "updated_value")
 
@@ -110,7 +113,8 @@ func checkVersionDependentCommands(t *testing.T, conn net.Conn) {
 	//Check getm
 	TCPWrite(t, conn, "getm key1")
 	reply = TCPRead(t, conn)
-	checkIfExpected(t, strings.Trim(reply, "\000"), "VALUE "+version+" 15 120\r\nupdated_value\r\n")
+	checkIfExpected(t, strings.Trim(reply, "\000"), "VALUE "+version+" 0 120\r\nupdated_value\r\n")
+	key1_version = version
 }
 
 //Check if expiry handler is working
@@ -136,18 +140,30 @@ func checkExpiryHandler(t *testing.T, conn net.Conn) {
 }
 
 //Concurrent test
-func TestConcurrency(t *testing.T) {
+//Not yet functional
+/*
+func TestnoConcurrency(t *testing.T) {
+
+	//Names of keys the threads will write
 	var client_names = []string{"alpha", "beta", "gamma", "kappa", "delta", "zeta", "iota"}
+	ack := make(chan bool)
 
 	for _, name := range client_names {
 
-		go client(t, name)
+		go client(t, name, key1_version,ack)
 		t.Log("Client " + name + " started.")
+	}
+
+	//Wait for them to finish
+	for _ = range client_names {
+		<- ack
 	}
 }
 
 //Concurrent Client
-func client(t *testing.T, name string) {
+//First write and read different values
+//then cas same key
+func client(t *testing.T, name string, version string,ack chan bool) {
 
 	//Connect to server
 	conn, err := net.Dial("tcp", "localhost:9000")
@@ -161,6 +177,7 @@ func client(t *testing.T, name string) {
 	TCPWrite(t, conn, "value_sam")
 
 	reply := TCPRead(t, conn)
+	fmt.Println("resched h")
 	response := strings.Split(reply, " ")
 
 	checkIfExpected(t, response[0], "OK")
@@ -168,7 +185,20 @@ func client(t *testing.T, name string) {
 	TCPWrite(t, conn, "get "+name)
 	reply = TCPRead(t, conn)
 	checkIfExpected(t, strings.Trim(reply, "\000"), "VALUE 128\r\nvalue_sam\r\n")
+
+	//Perform CAS
+	TCPWrite(t, conn, "cas common 0 "+version+" 120")
+	time.Sleep(10 * time.Millisecond)
+	TCPWrite(t, conn, "updated_value")
+
+	reply = TCPRead(t, conn)
+	response = strings.Split(reply, " ")
+
+	checkIfExpected(t, response[0], "OK")
+
+	ack <- true
 }
+*/
 
 func TCPWrite(t *testing.T, conn net.Conn, buf string) {
 	_, err := conn.Write([]byte(buf + "\r\n"))
