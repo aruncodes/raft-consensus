@@ -7,11 +7,11 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"os"
 	"strings"
-	"bufio"
 )
 
 // Port in which the server should listen to
@@ -58,7 +58,7 @@ func main() {
 	m = make(map[string]value)
 
 	//Initialize write queue
-	writeQueue = make(chan dataStoreWriteBundle,10)
+	writeQueue = make(chan dataStoreWriteBundle)
 
 	//Wake up write handler
 	go dataStoreWriteHandler()
@@ -96,12 +96,12 @@ func handleClient(clientConn net.Conn) {
 	// Server the client till he exits
 	for {
 
-		buf,err := reader.ReadString('\n')
+		buf, err := reader.ReadString('\n')
 
 		if err != nil {
 			debug("Command Read Error:" + err.Error())
 			WriteTCP(clientConn, "ERR_INTERNAL\r\n")
-			return 
+			return
 		}
 		// debug("Read Msg: |"+string(buf)+" |")
 
@@ -113,11 +113,11 @@ func handleClient(clientConn net.Conn) {
 			getValueMeta(clientConn, command, "meta")
 
 		case "set", "cas":
-			data,err := reader.ReadString('\n')	// These commands have data line
+			data, err := reader.ReadString('\n') // These commands have data line
 			if err != nil {
 				debug("Data Read Error:" + err.Error())
 				WriteTCP(clientConn, "ERR_INTERNAL\r\n")
-				return 
+				return
 			}
 
 			ack := make(chan bool)
@@ -138,7 +138,6 @@ func handleClient(clientConn net.Conn) {
 		}
 	}
 }
-
 
 func WriteTCP(clientConn net.Conn, data string) {
 	//Write to TCP connection

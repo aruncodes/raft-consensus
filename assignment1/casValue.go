@@ -100,10 +100,11 @@ func casValue(clientConn net.Conn, command []string, data string) {
 		sendExpiry := func() {
 			ack := make(chan bool)
 			writeQueue <- dataStoreWriteBundle{nil, []string{"expire", key, fmt.Sprintf("%d", version)}, "", ack}
+			<-ack
 		}
 
 		//Set expiry timer
-		if(exptime > 0) {
+		if exptime > 0 {
 			time.AfterFunc(time.Duration(exptime)*time.Second, sendExpiry)
 		}
 
