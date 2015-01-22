@@ -59,7 +59,7 @@ func main() {
 	m = make(map[string]value)
 
 	//Wake up expiry handler
-	go expiryHandler()
+	// go expiryHandler()
 
 	//Initialize write queue
 	writeQueue = make(chan dataStoreWriteBundle)
@@ -165,7 +165,7 @@ func dataStoreWriteHandler() {
 		//Receive write bundle from queue and process sequentially
 		writeBundle := <-writeQueue
 
-		debug("Write received")
+		debug("Write received : " + writeBundle.command[0])
 		switch writeBundle.command[0] {
 		case "set":
 			setValue(writeBundle.clientConn, writeBundle.command, writeBundle.data)
@@ -173,6 +173,8 @@ func dataStoreWriteHandler() {
 			casValue(writeBundle.clientConn, writeBundle.command, writeBundle.data)
 		case "delete":
 			deleteValue(writeBundle.clientConn, writeBundle.command)
+		case "expire":
+			expiryHandler2(writeBundle.command)
 		}
 
 		//Send ACK
