@@ -97,7 +97,13 @@ func casValue(clientConn net.Conn, command []string, data string) {
 		m[key] = value{[]byte(datastring), numbytes, version, exptime, time.Now()}
 
 		//Inform expiryHandler
-		go dataStoreChanged(key, MODIFY)
+		sendExpiry := func() {
+			ack := make(chan bool)
+			writeQueue <- dataStoreWriteBundle{nil, []string{"expire", key, fmt.Sprintf("%d", version)}, "", ack}
+		}
+
+		//Set expiry timer
+		time.AfterFunc(time.Duration(exptime)*time.Second, sendExpiry)
 
 		//Reply if required
 		if !noreply {
