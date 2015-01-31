@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"strings"
@@ -16,16 +17,16 @@ type RequestResponsePair struct {
 
 var rrp = []RequestResponsePair{
 
-	{"get arun", "", "ERR_NOT_FOUND"},                      //Get if key not set
-	{"set arun 10 100", "my name is arun", "OK "},          //Set a key-value
-	{"set arun 14 110", "my name is babu", "ERR_VERSION"},  //Overwrite already set variable
-	{"cas arun 10 1000 100", "wowo", "ERR_VERSION"},        //CAS without correct version
-	{"get arun", "", "VALUE 100\r\nmy name is arun"},       //Get the set vairable
-	{"delete babu", "", "ERR_NOT_FOUND"},                   //Delete a non existing key
-	{"delete arun", "", "DELETED"},                         //Delete existing key
-	{"djsbkv", "", "ERR_CMD_ERR"},                          //Command error
-	{"set arun a10 100", "my name is arun", "ERR_CMD_ERR"}, //synatx error
-	{"getm bbb asn", "", "ERR_CMD_ERR"},                    //synatx error
+	{"get arun", "", "ERR_NOT_FOUND"},                    //Get if key not set
+	{"set arun 10 17", "my name is arun", "OK "},         //Set a key-value
+	{"set arun 14 17", "my name is babu", "ERR_VERSION"}, //Overwrite already set variable
+	{"cas arun 10 1000 6", "wowo", "ERR_VERSION"},        //CAS without correct version
+	{"get arun", "", "VALUE 17"},                         //Get the set vairable
+	{"delete babu", "", "ERR_NOT_FOUND"},                 //Delete a non existing key
+	{"delete arun", "", "DELETED"},                       //Delete existing key
+	{"djsbkv", "", "ERR_CMD_ERR"},                        //Command error
+	{"set arun 10 a100", "", "ERR_CMD_ERR"},              //synatx error
+	{"getm bbb asn", "", "ERR_CMD_ERR"},                  //synatx error
 
 }
 
@@ -59,7 +60,6 @@ func performRRPairs(t *testing.T, conn net.Conn) {
 
 	for _, pair := range rrp {
 		t.Log(pair.req, pair.resp)
-
 		TCPWrite(t, conn, pair.req)
 
 		if pair.data != "" {
@@ -76,6 +76,7 @@ func performRRPairs(t *testing.T, conn net.Conn) {
 		}
 
 		checkIfExpected(t, response, pair.resp)
+
 	}
 }
 
@@ -85,7 +86,7 @@ func checkVersionDependentCommands(t *testing.T, conn net.Conn) {
 	//Check 'cas' and 'getm' since they depend of version
 
 	//Set a variable
-	TCPWrite(t, conn, "set key1 100 128")
+	TCPWrite(t, conn, "set key1 100 8")
 	TCPWrite(t, conn, "value1")
 	reply := TCPRead(t, conn)
 	response := strings.Split(reply, " ")
@@ -94,7 +95,7 @@ func checkVersionDependentCommands(t *testing.T, conn net.Conn) {
 
 	//Perform CAS
 	t.Log("Testing compare and swap")
-	TCPWrite(t, conn, "cas key1 0 "+version+" 120")
+	TCPWrite(t, conn, "cas key1 0 "+version+" 15")
 	TCPWrite(t, conn, "updated_value")
 	reply = TCPRead(t, conn)
 	response = strings.Split(reply, " ")
@@ -105,7 +106,8 @@ func checkVersionDependentCommands(t *testing.T, conn net.Conn) {
 	t.Log("Testing getm")
 	TCPWrite(t, conn, "getm key1")
 	reply = TCPRead(t, conn)
-	checkIfExpected(t, strings.Trim(reply, "\000"), "VALUE "+version+" 0 120\r\nupdated_value\r\n")
+	checkIfExpected(t, strings.Trim(reply, "\000"), "VALUE "+version+" 0 15")
+
 	key1_version = version
 }
 
@@ -115,7 +117,7 @@ func checkExpiryHandler(t *testing.T, conn net.Conn) {
 
 	t.Log("Testing expiry handler..")
 
-	TCPWrite(t, conn, "set sam 1 128")
+	TCPWrite(t, conn, "set sam 1 11")
 	TCPWrite(t, conn, "value_sam")
 
 	reply := TCPRead(t, conn)
@@ -127,27 +129,28 @@ func checkExpiryHandler(t *testing.T, conn net.Conn) {
 	time.Sleep(2 * time.Second)
 	TCPWrite(t, conn, "get sam")
 	reply = TCPRead(t, conn)
-	checkIfExpected(t, strings.Trim(reply, "\000"), "ERR_NOT_FOUND\r\n")
+	checkIfExpected(t, reply, "ERR_NOT_FOUND")
 }
 
 //Concurrent test
 func TestConcurrency(t *testing.T) {
 	//Names of keys the threads will write
-	var client_names = []string{"alpha", "beta", "gamma", "kappa", "delta", "zeta", "iota"}
+	// var client_names = []string{"alpha", "beta", "gamma", "kappa", "delta", "zeta", "iota"}
+	var n_clients = 50
 
 	ack := make(chan int) // Channel for clients to talk back if they were successfull
 
-	for _, name := range client_names {
-
+	for i := 0; i < n_clients; i++ {
+		name := fmt.Sprintf("client%d", i)
 		go client(t, name, key1_version, ack)
 		t.Log("Client " + name + " started.")
 	}
 
 	//Wait for them to finish
 	//Sum the acks
-	sum := 0
-	for _ = range client_names {
-		sum += <-ack
+	sum := int(0)
+	for i := 0; i < n_clients; i++ {
+		sum = sum + <-ack
 	}
 	if sum != 1 { //Only one client should be able to cas
 		t.Error("Concurrency error, sum = ", sum)
@@ -166,7 +169,7 @@ func client(t *testing.T, name string, version string, ack chan int) {
 		t.Error("Cannot initialize TCP connection")
 	}
 
-	TCPWrite(t, conn, "set "+name+" 12 128")
+	TCPWrite(t, conn, "set "+name+" 120 11")
 	TCPWrite(t, conn, "value_sam")
 
 	reply := TCPRead(t, conn)
@@ -175,14 +178,15 @@ func client(t *testing.T, name string, version string, ack chan int) {
 	checkIfExpected(t, response[0], "OK")
 
 	TCPWrite(t, conn, "get "+name)
+	time.Sleep(time.Second)
 	reply = TCPRead(t, conn)
-	checkIfExpected(t, strings.Trim(reply, "\000"), "VALUE 128\r\nvalue_sam\r\n")
+	checkIfExpected(t, reply, "VALUE 11")
 
 	//Perform CAS
-	TCPWrite(t, conn, "cas key1 0 "+version+" 120")
-	time.Sleep(10 * time.Millisecond)
+	TCPWrite(t, conn, "cas key1 0 "+version+" 15")
 	TCPWrite(t, conn, "updated_value")
 
+	// time.Sleep(time.Second)
 	reply = TCPRead(t, conn)
 	response = strings.Split(reply, " ")
 	if response[0] == "OK" {
@@ -200,13 +204,14 @@ func TCPWrite(t *testing.T, conn net.Conn, buf string) {
 }
 
 func TCPRead(t *testing.T, conn net.Conn) string {
-	buf := make([]byte, 1024)
-	_, err := conn.Read(buf)
-	if err != nil {
+	scanner := bufio.NewScanner(conn)
+	scanner.Scan()
+	buf := scanner.Text()
+
+	if scanner.Err() != nil {
 		t.Error("Cannot read from TCP socket..")
 	}
-
-	return string(buf)
+	return buf
 }
 
 func checkIfExpected(t *testing.T, actual string, expected string) {

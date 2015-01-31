@@ -92,7 +92,7 @@ func setValue(clientConn net.Conn, command []string, data string) {
 	//Inform expiryHandler
 	sendExpiry := func() {
 		ack := make(chan bool)
-		writeQueue <- dataStoreWriteBundle{nil, []string{"expire", key, fmt.Sprintf("%d", version)}, "", ack}
+		requestQueue <- dataStoreBundle{nil, []string{"expire", key, fmt.Sprintf("%d", version)}, "", ack}
 		<-ack
 	}
 

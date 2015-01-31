@@ -10,7 +10,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
-	"os"
+	"strconv"
 	"strings"
 )
 
@@ -26,16 +26,16 @@ type value struct {
 	numbytes, version, exptime int64
 }
 
-/* This bundle is sent into queue for write requests*/
-type dataStoreWriteBundle struct {
+/* This bundle is sent into queue for datastore requests*/
+type dataStoreBundle struct {
 	clientConn net.Conn
 	command    []string
 	data       string
 	ack        chan bool // The handle client will wait on this channel for ack
 }
 
-//Write queue
-var writeQueue chan dataStoreWriteBundle
+//request queue
+var requestQueue chan dataStoreBundle
 
 //Data store as a map
 var m map[string]value
@@ -48,7 +48,7 @@ func main() {
 	conn, err := net.Listen("tcp", ":"+PORT)
 	if err != nil {
 		debug("Error listening to port:" + err.Error())
-		os.Exit(1)
+		return
 	}
 
 	// Close listener when application closes
@@ -57,11 +57,11 @@ func main() {
 	//Initialize datastore
 	m = make(map[string]value)
 
-	//Initialize write queue
-	writeQueue = make(chan dataStoreWriteBundle)
+	//Initialize request queue
+	requestQueue = make(chan dataStoreBundle, 100)
 
-	//Wake up write handler
-	go dataStoreWriteHandler()
+	//Wake up request handler
+	go dataStoreHandler()
 
 	debug("Server started..")
 
@@ -71,7 +71,7 @@ func main() {
 
 		if err != nil {
 			debug("Error accepting connection :" + err.Error())
-			os.Exit(1)
+			continue
 		}
 
 		//Handle each client in a seperate
@@ -90,16 +90,18 @@ func handleClient(clientConn net.Conn) {
 	//Close connection when client is done
 	defer clientConn.Close()
 
-	//Input reader
-	reader := bufio.NewReader(clientConn)
+	//Input scanner
+	scanner := bufio.NewScanner(clientConn)
 
 	// Server the client till he exits
 	for {
 
-		buf, err := reader.ReadString('\n')
+		scanner.Split(bufio.ScanLines) //Treat command as string with \n
+		scanner.Scan()
+		buf := scanner.Text()
 
-		if err != nil {
-			debug("Command Read Error:" + err.Error())
+		if scanner.Err() != nil {
+			debug("Command Read Error")
 			WriteTCP(clientConn, "ERR_INTERNAL\r\n")
 			return
 		}
@@ -107,26 +109,38 @@ func handleClient(clientConn net.Conn) {
 
 		command := strings.Split(strings.Trim(buf, "\n \r\000"), " ")
 		switch command[0] {
-		case "get":
-			getValueMeta(clientConn, command, "value")
-		case "getm":
-			getValueMeta(clientConn, command, "meta")
+
+		case "get", "getm", "delete":
+			ack := make(chan bool)
+			requestQueue <- dataStoreBundle{clientConn, command, "", ack}
+			<-ack // Wait for ack after operation
 
 		case "set", "cas":
-			data, err := reader.ReadString('\n') // These commands have data line
-			if err != nil {
-				debug("Data Read Error:" + err.Error())
-				WriteTCP(clientConn, "ERR_INTERNAL\r\n")
-				return
+			//Read data line for set and cas
+			dataLength := getDataLen(command)
+			if dataLength < 1 {
+				WriteTCP(clientConn, "ERR_CMD_ERR\r\n")
+				debug("Invalid number of bytes specified.")
+				continue
 			}
+			scanner.Split(bufio.ScanBytes) //Treat each byte as a token
+
+			dataBytes := make([]byte, dataLength)
+			for i := int64(0); i < dataLength; i++ {
+				scanner.Scan() // Read bytes of specified length
+
+				if scanner.Err() != nil {
+					debug("Data Read Error")
+					WriteTCP(clientConn, "ERR_INTERNAL\r\n")
+					return
+				}
+				dataBytes[i] = scanner.Bytes()[0]
+			}
+			data := string(dataBytes)
 
 			ack := make(chan bool)
-			//Send the bundle into write queue
-			writeQueue <- dataStoreWriteBundle{clientConn, command, data, ack}
-			<-ack // Wait for ack after operation
-		case "delete":
-			ack := make(chan bool)
-			writeQueue <- dataStoreWriteBundle{clientConn, command, "", ack}
+			//Send the bundle into request queue
+			requestQueue <- dataStoreBundle{clientConn, command, data, ack}
 			<-ack // Wait for ack after operation
 
 		default:
@@ -147,29 +161,63 @@ func WriteTCP(clientConn net.Conn, data string) {
 	}
 }
 
-//Make sure the writes are sequential
-func dataStoreWriteHandler() {
+//Make sure the requests are sequential
+func dataStoreHandler() {
 
 	for {
 
-		//Receive write bundle from queue and process sequentially
-		writeBundle := <-writeQueue
+		//Receive request bundle from queue and process sequentially
+		requestBundle := <-requestQueue
 
-		debug("Write received : " + writeBundle.command[0])
-		switch writeBundle.command[0] {
+		debug("Request received : " + requestBundle.command[0])
+		switch requestBundle.command[0] {
+
+		case "get":
+			getValueMeta(requestBundle.clientConn, requestBundle.command, "value")
+		case "getm":
+			getValueMeta(requestBundle.clientConn, requestBundle.command, "meta")
 		case "set":
-			setValue(writeBundle.clientConn, writeBundle.command, writeBundle.data)
+			setValue(requestBundle.clientConn, requestBundle.command, requestBundle.data)
 		case "cas":
-			casValue(writeBundle.clientConn, writeBundle.command, writeBundle.data)
+			casValue(requestBundle.clientConn, requestBundle.command, requestBundle.data)
 		case "delete":
-			deleteValue(writeBundle.clientConn, writeBundle.command)
+			deleteValue(requestBundle.clientConn, requestBundle.command)
 		case "expire":
-			expiryHandler(writeBundle.command)
+			expiryHandler(requestBundle.command)
 		}
 
 		//Send ACK
-		writeBundle.ack <- true
+		requestBundle.ack <- true
 	}
+}
+
+//Get the length of the data to be read for set and cas
+func getDataLen(command []string) int64 {
+
+	var len_string string = "0"
+
+	switch command[0] {
+	case "set":
+		if len(command) > 3 {
+			len_string = command[3]
+		}
+	case "cas":
+		if len(command) > 4 {
+			len_string = command[4]
+		}
+	}
+
+	numbytes, err := strconv.ParseInt(len_string, 10, 64)
+	if err != nil {
+		debug("Invalid number of bytes specified.")
+		return 0
+	}
+	if numbytes < 1 {
+		debug("Number of bytes must be positive.")
+		return 0
+	}
+
+	return numbytes
 }
 
 func debug(msg string) {
