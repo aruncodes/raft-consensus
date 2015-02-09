@@ -1,14 +1,14 @@
 package main
 
 import (
+	"assignment2/raft"
 	"bufio"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
-	"assignment2/raft"
 	"strconv"
 	"time"
-	"io/ioutil"
 )
 
 //Make it true if server should log to STDOUT
@@ -27,7 +27,7 @@ type Command raft.Command
 
 //Bundle for kv store handler
 type KVBundle struct {
-	command 		Command 	//Command to be executed
+	command Command //Command to be executed
 	// command      []byte
 	responseChan chan string //Channel to send response
 }
@@ -50,7 +50,7 @@ var raftObj *raft.Raft
 func main() {
 
 	if !LOG_MESSAGES {
-		log.SetOutput(ioutil.Discard) 
+		log.SetOutput(ioutil.Discard)
 	}
 
 	//Server should get server id as an argument
@@ -68,7 +68,7 @@ func main() {
 
 	//Create a new raft
 	raftObj, err = raft.NewRaft(&raft.ClusterInfo, int(serverID))
-	
+
 	if err != nil {
 		log.Print(err.Error())
 		return
@@ -160,9 +160,9 @@ func handleClient(clientConn net.Conn) {
 			command.Value = string(dataBytes)
 		}
 
-		//Raft code starts
-
 		response := "NO_RESPONSE"
+
+		//Raft code starts
 		_, er := raftObj.Append(raft.Command(command))
 
 		if er != nil {
@@ -170,7 +170,7 @@ func handleClient(clientConn net.Conn) {
 			response = "REDIRECT " + strconv.Itoa(raftObj.LeaderID)
 		} else {
 			if command.Cmd != "get" && command.Cmd != "getm" {
-				
+
 				for { //Wait till we get majority
 					majority := raft.RequestAppendEntriesRPC(raft.ClusterInfo, raftObj)
 					if majority {
@@ -182,14 +182,13 @@ func handleClient(clientConn net.Conn) {
 
 			ackChannel := make(chan string)
 			kvBundle := KVBundle{command, ackChannel}
-			// kvBundle := KVBundle{cmdByteStream, ackChannel}
 
 			kvQueue <- kvBundle     //Send bundle
 			response = <-ackChannel //Wait for response
 
 		}
-
 		//Raft code ends
+
 		ret := WriteTCP(clientConn, response+"\r\n") //Write response to client
 
 		if !ret {

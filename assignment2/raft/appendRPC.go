@@ -1,10 +1,10 @@
 package raft
 
 import (
-	"strconv"
 	"log"
 	"net"
 	"net/rpc"
+	"strconv"
 )
 
 type AppendRPCArgs struct {
@@ -12,22 +12,22 @@ type AppendRPCArgs struct {
 	// leaderId 	uint64
 	// PrevLogIndex	Lsn
 	// prevLogTerm	uint64
-	Log 			[] LogItem
+	Log []LogItem
 	// leaderCommit	uint64
 }
 
 type AppendRPCResults struct {
 	// term uint64
-	Success	bool
+	Success bool
 }
 
-type AppendEntries struct {}
+type AppendEntries struct{}
 
 func (ap *AppendEntries) AppendEntriesRPC(args AppendRPCArgs, result *AppendRPCResults) error {
 	log.Print("AppendRPC call received")
 
 	// raft.Append(args.Log) //Append to our local log
-	for _,log := range args.Log {
+	for _, log := range args.Log {
 		command := log.DATA
 
 		raft.Append(command)
@@ -41,7 +41,7 @@ func appendRPCListener(port int) {
 	appendRPC := new(AppendEntries)
 	rpc.Register(appendRPC)
 
-	listener, err := net.Listen("tcp",":" + strconv.FormatInt(int64(port),10) )
+	listener, err := net.Listen("tcp", ":"+strconv.FormatInt(int64(port), 10))
 	if err != nil {
 		log.Print("AppendRCP error : " + err.Error())
 		return
@@ -57,18 +57,18 @@ func appendRPCListener(port int) {
 	}
 }
 
-func RequestAppendEntriesRPC(config ClusterConfig,raft *Raft) bool {
+func RequestAppendEntriesRPC(config ClusterConfig, raft *Raft) bool {
 
 	var votes int
 
-	for _,server := range config.Servers {
+	for _, server := range config.Servers {
 
 		if raft.ServerID == server.Id {
 			// The current running server
 			continue
 		}
 
-		client, err := rpc.Dial("tcp", ":" + strconv.Itoa(server.LogPort))
+		client, err := rpc.Dial("tcp", ":"+strconv.Itoa(server.LogPort))
 		if err != nil {
 			log.Print("AppendRPC Dial error on port: " + strconv.Itoa(server.LogPort))
 			continue
@@ -85,7 +85,7 @@ func RequestAppendEntriesRPC(config ClusterConfig,raft *Raft) bool {
 		}
 
 		if reply.Success == true {
-			votes ++
+			votes++
 		}
 	}
 

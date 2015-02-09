@@ -13,7 +13,7 @@ func kvStoreHandler() {
 	kvstore = make(map[string]value)
 
 	for {
-		bundle := <-kvQueue	//Receive bundle from client
+		bundle := <-kvQueue //Receive bundle from client
 		command := bundle.command
 
 		response := ""
