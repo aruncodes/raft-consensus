@@ -1,17 +1,19 @@
-## raft-golang
-A partial implementation of RAFT consensus algorithm. Work still in progress.
+## memcached-golang
+A simple Memcached clone written in golang
 
 
 ####Introduction
+
+This is a version controlled key-value pair store written in GO. It stores ASCII keys and values along with their expiry time and version. A value is updated only if the version is matched. It runs as a TCP server in port 9000 (configurable). It is written using Go's built-in concurrent abilities. It is packed with testing code also.
 
 ####How to install
 
 You can install the server by executing the following commands.
 *You need to have golang installed.*
 ```shell
-go get github.com/aruncodes/cs733/assignment2/kvstore
-go install github.com/aruncodes/cs733/assignment2/kvstore
-./bin/kvstore <server-id>
+go get github.com/aruncodes/cs733/assignment1
+go install github.com/aruncodes/cs733/assignment1
+./bin/server
 ```
 
 ####How to use
@@ -25,7 +27,7 @@ Set command stores a key value pair into datastore. It requires expiry time in s
 
 Syntax:
 ```
-	set <key_name> <expiry_time> <num_bytes> \r\n
+	set <key_name> <expiry_time> <num_bytes> [noreply] \r\n
 	<value>
 ```
 ```<key_name> ```: Name of key (ASCII)
@@ -35,6 +37,8 @@ Syntax:
 ```<num_bytes>	```: Size of data in bytes
 
 ```<value>	```:Actual data (as next line)
+
+```[noreply]``` : (Optional) If you don't need response from server
 
 **Response:**
 
@@ -98,7 +102,7 @@ Compare and swap command replaces the existing value of a key with new data if t
 
 Syntax:
 ```
-	cas <key_name> <expiry_time> <version> <num_bytes> \r\n
+	cas <key_name> <expiry_time> <version> <num_bytes> [noreply] \r\n
 	<value>
 ```
 ```<version> ```: Version number of key you want to swap with.
@@ -149,6 +153,5 @@ The server includes an expiry handler which removes a key value pair when its ex
 ####How to test server
 The server is built with go's testing mechanism. You can test the server by executing
 ```shell
-go install github.com/aruncodes/cs733/assignment2/kvstore
-go test github.com/aruncodes/cs733/assignment2/kvstore
+go test github.com/aruncodes/cs733/assignment1
 ```

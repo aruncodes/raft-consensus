@@ -13,7 +13,7 @@ import (
 
 const LEADER_PORT = 9000
 const NUM_SERVERS = 5
-const SERVER_NAME = "server" //Must be inside GOPATH
+const SERVER_NAME = "kvstore" //Must be inside GOPATH
 
 var proc []*exec.Cmd
 

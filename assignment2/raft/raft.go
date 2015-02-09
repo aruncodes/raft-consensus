@@ -92,8 +92,8 @@ type Raft struct {
 // entries are recovered and replayed /*, commitCh chan LogEntry*/ 
 func NewRaft(config *ClusterConfig, thisServerId int ) (*Raft, error) {
 
-	//Get config.json file from $GOPATH
-	file, err:= ioutil.ReadFile(os.Getenv("GOPATH") +"/config.json")
+	//Get config.json file from $GOPATH/src/assignment2/
+	file, err:= ioutil.ReadFile(os.Getenv("GOPATH") +"/src/assignment2/config.json")
 	if err != nil {
 		return nil, errors.New("Couldn't open file")
 	}

@@ -5,14 +5,14 @@ import (
 	"log"
 	"net"
 	"os"
-	"raft"
+	"assignment2/raft"
 	"strconv"
 	"time"
 	"io/ioutil"
 )
 
 //Make it true if server should log to STDOUT
-const LOG_MESSAGES = false
+const LOG_MESSAGES = true
 
 //Errors
 const (
