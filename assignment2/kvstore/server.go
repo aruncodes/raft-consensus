@@ -12,7 +12,7 @@ import (
 )
 
 //Make it true if server should log to STDOUT
-const LOG_MESSAGES = true
+const LOG_MESSAGES = false
 
 //Errors
 const (
