@@ -3,6 +3,8 @@ A partial implementation of RAFT consensus algorithm. Work still in progress.
 
 
 ####Introduction
+The current version does not deal with leader election and thereby does not perform certain functions like heartbeat sending etc. This version only deals with log replication. It reads in the cluster configuration from a json file and assumes that the first server configuration is for the leader. It returns a redirect message to the client if it tries to contact any other server which is not the leader.
+
 
 ####How to install
 
@@ -14,9 +16,11 @@ go install github.com/aruncodes/cs733/assignment2/kvstore
 ./bin/kvstore <server-id>
 ```
 
+
 ####How to use
 After the server has started, you need to establish a TCP connection with it for any commands which follows.
 The TCP server runs on port 9000.
+
 
 ####Commands
 
@@ -138,13 +142,18 @@ Failures :
 
 ```ERR_NOT_FOUND``` : Value doesn't exist. (Expired maybe)
 
+
 ####Errors
 ```ERR_CMD_ERR``` : Unknown command or error in syntax
 
 ```ERR_INTERNAL``` : Internal server error
 
+'''REDIRECT <leader_id>''' : The server being contacted is not the leader, contact server with leader_id as its id
+
+
 ####Expiry Handler
 The server includes an expiry handler which removes a key value pair when its expiry time is reached. Expiry time is calculated as no. of seconds provided when the key is set.
+
 
 ####How to test server
 The server is built with go's testing mechanism. You can test the server by executing
@@ -152,3 +161,10 @@ The server is built with go's testing mechanism. You can test the server by exec
 go install github.com/aruncodes/cs733/assignment2/kvstore
 go test github.com/aruncodes/cs733/assignment2/kvstore
 ```
+
+####Testing
+This version is just an extension to the previously built memcached kvstore. Thus the basic underlying code for a client handler and a backend kvhandler is similar. As a result test cases for assignment 1 are not included in the testing functions of this version.
+
+Testing functionality is added for the newly built log replication module which will also eventually implement raft.  
+First test includes spawning a server which is not a leader. If a client tries to make contact to it a REDIRECT error message must be sent to the client.  
+Second test includes spawning 2 servers one of which is the leader. The client contacts the leader but the leader does not have any majority as of now. After some time we spawn a new follower server and now the leader gets a majority and the client request is passed through, processed, and results sent back.
