@@ -2,13 +2,11 @@ package main
 
 import (
 	"assignment2/raft"
-	"bufio"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
 	"strconv"
-	"time"
 )
 
 //Make it true if server should log to STDOUT
@@ -22,14 +20,12 @@ const (
 	ERR_VERSION   = "ERR_VERSION"
 )
 
-//A command from client
-type Command raft.Command
+type Command raft.Command //A command from client
 
-//Bundle for kv store handler
-type KVBundle struct {
-	command Command //Command to be executed
-	// command      []byte
-	responseChan chan string //Channel to send response
+//Response bundle from kv store to connection handler
+type KVResponse struct {
+	lsn      raft.Lsn //Log sequence number
+	response string   //Response
 }
 
 //Value of the key-value pair to be stored in datastore
@@ -38,18 +34,15 @@ type value struct {
 	numbytes, version, exptime int64
 }
 
-//KV Store
-var kvstore map[string]value
-
-//Command queue
-var kvQueue chan KVBundle
-
-//Raft
-var raftObj *raft.Raft
+var kvstore map[string]value        //KV Store
+var commitCh chan raft.LogEntry     //Channel from raft to KV Store
+var kvResponse chan KVResponse      //Response channel
+var clientMap map[raft.Lsn]net.Conn //Save all client connections with their Lsn
+var raftObj *raft.Raft              //Raft
 
 func main() {
 
-	if !LOG_MESSAGES {
+	if !LOG_MESSAGES { //Disable debuging
 		log.SetOutput(ioutil.Discard)
 	}
 
@@ -59,15 +52,16 @@ func main() {
 		return
 	}
 
+	//Parse server id
 	serverID, err := strconv.ParseInt(os.Args[1], 10, 32)
-
 	if err != nil {
 		log.Print("Server ID not valid")
 		return
 	}
 
-	//Create a new raft
-	raftObj, err = raft.NewRaft(&raft.ClusterInfo, int(serverID))
+	//Create a new raft and pass commit channel
+	commitCh = make(chan raft.LogEntry, 10) //Commit channel from raft to kvstore
+	raftObj, err = raft.NewRaft(&raft.ClusterInfo, int(serverID), commitCh)
 
 	if err != nil {
 		log.Print(err.Error())
@@ -88,14 +82,10 @@ func startServer(port int) {
 		return
 	}
 
-	//Close connection when function exits
-	defer conn.Close()
+	defer conn.Close() //Close connection when function exits
 
-	//Init queue
-	kvQueue = make(chan KVBundle)
-
-	//Start kv store handler
-	go kvStoreHandler()
+	go kvStoreHandler()    //Start kv store handler
+	go clientConnManager() //Manage client connections
 
 	log.Print("Server started..")
 
@@ -108,95 +98,10 @@ func startServer(port int) {
 			continue
 		}
 
-		//Handle each client in a separate go routine
-		go handleClient(client)
+		//Handle one command for now
+		//Client manager will deal with more after one
+		go handleOneCommand(client, KVResponse{}) //No response if first time
 	}
-}
-
-func handleClient(clientConn net.Conn) {
-
-	//Close connection when client is done
-	defer clientConn.Close()
-
-	// Server the client till he exits
-	for {
-
-		//Input scanner
-		scanner := bufio.NewScanner(clientConn)
-		scanner.Split(bufio.ScanLines) //Treat command as string with \n
-		scanner.Scan()
-		buf := scanner.Text()
-
-		if scanner.Err() != nil {
-			log.Print("Command Read Error")
-			sendError(clientConn, ERR_INTERNAL)
-			return
-		}
-
-		command, err := parseInput(buf)
-
-		if err != "" {
-			ret := sendError(clientConn, err)
-			if !ret {
-				log.Print("Client disconnected/broken pipe")
-				return
-			}
-			continue
-		}
-		if command.Cmd == "set" || command.Cmd == "cas" {
-			//Read data bytes of command.Length length
-			scanner.Split(bufio.ScanBytes) //Treat each byte as a token
-			dataBytes := make([]byte, command.Length)
-
-			for i := int64(0); i < command.Length; i++ {
-				scanner.Scan() // Read bytes of specified length
-				if scanner.Err() != nil {
-					log.Print("Data Read Error")
-					sendError(clientConn, ERR_INTERNAL)
-					return
-				}
-				dataBytes[i] = scanner.Bytes()[0]
-			}
-			command.Value = string(dataBytes)
-		}
-
-		response := "NO_RESPONSE"
-
-		//Raft code starts
-		_, er := raftObj.Append(raft.Command(command))
-
-		if er != nil {
-			log.Print(er.Error())
-			response = "REDIRECT " + strconv.Itoa(raftObj.LeaderID)
-		} else {
-			if command.Cmd != "get" && command.Cmd != "getm" {
-
-				for { //Wait till we get majority
-					majority := raft.RequestAppendEntriesRPC(raft.ClusterInfo, raftObj)
-					if majority {
-						break
-					}
-					time.Sleep(1 * time.Second)
-				}
-			}
-
-			ackChannel := make(chan string)
-			kvBundle := KVBundle{command, ackChannel}
-
-			kvQueue <- kvBundle     //Send bundle
-			response = <-ackChannel //Wait for response
-
-		}
-		//Raft code ends
-
-		ret := WriteTCP(clientConn, response+"\r\n") //Write response to client
-
-		if !ret {
-			log.Print("Client disconnected/broken pipe")
-			break
-		}
-	}
-
 }
 
 func WriteTCP(clientConn net.Conn, data string) bool {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"assignment2/raft"
 	"fmt"
 	"log"
 	"math/rand"
@@ -9,12 +10,13 @@ import (
 
 func kvStoreHandler() {
 
-	//Create kv store
+	//Create kv store and response channel
 	kvstore = make(map[string]value)
+	kvResponse = make(chan KVResponse, 10)
 
 	for {
-		bundle := <-kvQueue //Receive bundle from client
-		command := bundle.command
+		logEntry := <-commitCh //Receive from raft
+		command := Command(logEntry.Data())
 
 		response := ""
 		switch command.Cmd {
@@ -29,8 +31,9 @@ func kvStoreHandler() {
 			continue //No one is waiting for response
 		}
 
-		//Send back response
-		bundle.responseChan <- response
+		//Send back response to kvResponse channel
+		//clientConnManager will be waiting
+		kvResponse <- KVResponse{logEntry.Lsn(), response}
 	}
 }
 
@@ -71,13 +74,12 @@ func setCas(command Command) string {
 	//Add value to keystore
 	kvstore[key] = value{[]byte(val), numbytes, version, exptime}
 
-	//Inform expiryHandler
+	//Inform KV-Handler by sending a fake log entry to expire
 	sendExpiry := func() {
-		command := Command{"expire", key, 0, 0, version, ""}
-		bundle := KVBundle{command, nil}
-		// bundle := KVBundle{encodeCommand(command), nil}
+		command := raft.Command{"expire", key, 0, 0, version, ""}
+		fakeLogEntry := raft.LogItem{raft.Lsn(0), command, true}
 
-		kvQueue <- bundle
+		commitCh <- fakeLogEntry
 	}
 
 	//Set expiry timer

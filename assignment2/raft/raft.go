@@ -10,13 +10,10 @@ import (
 	"sync"
 )
 
-type Lsn uint64 //Log sequence number, unique for all time.
-
+type Lsn uint64      //Log sequence number, unique for all time.
 type ErrRedirect int // Implements Error interface.
 
-//Raft object
-var raft Raft
-
+var raft Raft       //Raft object
 var lock sync.Mutex //Lock for appending to log
 
 type LogEntry interface {
@@ -80,22 +77,27 @@ var ClusterInfo ClusterConfig
 type Raft struct {
 	// .... fill
 	Log        []LogItem
+	LastLsn    Lsn
 	ServerID   int
 	ClientPort int
 	LogPort    int
 	LeaderID   int
 }
 
+//Commit channel to kvStore
+var kvChan chan LogEntry
+
 // Creates a raft object. This implements the SharedLog interface.
 // commitCh is the channel that the kvstore waits on for committed messages.
 // When the process starts, the local disk log is read and all committed
-// entries are recovered and replayed /*, commitCh chan LogEntry*/
-func NewRaft(config *ClusterConfig, thisServerId int) (*Raft, error) {
+// entries are recovered and replayed
+func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*Raft, error) {
 
 	//Get config.json file from $GOPATH/src/assignment2/
-	file, err := ioutil.ReadFile(os.Getenv("GOPATH") + "/src/assignment2/config.json")
+	filePath := os.Getenv("GOPATH") + "/src/assignment2/config.json"
+	file, err := ioutil.ReadFile(filePath)
 	if err != nil {
-		return nil, errors.New("Couldn't open file")
+		return nil, errors.New("Couldn't open config file from :" + filePath)
 	}
 
 	err = json.Unmarshal(file, &ClusterInfo)
@@ -110,18 +112,23 @@ func NewRaft(config *ClusterConfig, thisServerId int) (*Raft, error) {
 			raft.LeaderID = 0 //First server is leader by default
 			raft.ClientPort = server.ClientPort
 			raft.LogPort = server.LogPort
+			raft.LastLsn = 0
 			break
 		}
 	}
-	go appendRPCListener(raft.LogPort)
 
-	log.Print("Server id:" + strconv.Itoa(raft.ServerID))
+	kvChan = commitCh //Store channel
+
+	if thisServerId == raft.LeaderID {
+		//We are the leader, so start hearbeater
+		go heartBeater()
+	} else {
+		//Just a follower, listen for RPC from leader
+		go appendRPCListener(raft.LogPort)
+	}
+
+	log.Print("Raft init, Server id:" + strconv.Itoa(raft.ServerID))
 	return &raft, nil
-}
-
-// ErrRedirect as an Error object
-func (e ErrRedirect) Error() string {
-	return "Redirect to server " + strconv.Itoa(int(e))
 }
 
 func (r *Raft) Append(data Command) (LogEntry, error) {
@@ -131,11 +138,17 @@ func (r *Raft) Append(data Command) (LogEntry, error) {
 		return LogItem{}, ErrRedirect(r.LeaderID)
 	}
 
-	logItem := LogItem{Lsn(len(r.Log)), data, false}
+	logItem := LogItem{r.LastLsn + 1, data, false}
 
 	lock.Lock()
 	r.Log = append(r.Log, logItem)
+	r.LastLsn++
 	lock.Unlock()
 
 	return &logItem, nil
+}
+
+// ErrRedirect as an Error object
+func (e ErrRedirect) Error() string {
+	return "Redirect to server " + strconv.Itoa(int(e))
 }
