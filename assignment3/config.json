@@ -1,0 +1,10 @@
+{
+	"Path" : "...",
+	"Servers" : [
+		{"Id": 0, "Hostname": "localhost", "ClientPort": 9000, "LogPort": 9050},
+		{"Id": 1, "Hostname": "localhost", "ClientPort": 9001, "LogPort": 9051},
+		{"Id": 2, "Hostname": "localhost", "ClientPort": 9002, "LogPort": 9052},
+		{"Id": 3, "Hostname": "localhost", "ClientPort": 9003, "LogPort": 9053},
+		{"Id": 4, "Hostname": "localhost", "ClientPort": 9004, "LogPort": 9054}
+	]
+}
