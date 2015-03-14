@@ -72,17 +72,20 @@ type ClusterConfig struct {
 
 var ClusterInfo ClusterConfig
 
+var raftMap map[int]*Raft //To get raft reference of all 5 server, required to fake RPCs
+
 // Raft implements the SharedLog interface.
 type Raft struct {
-	// .... fill
-	Log        []LogItem
-	LastLsn    Lsn
-	ServerID   int
-	ClientPort int
-	LogPort    int
-	LeaderID   int
-	Lock       sync.Mutex    //Lock for appending to log
-	kvChan     chan LogEntry //Commit channel to kvStore
+	Log                      []LogItem
+	LastLsn                  Lsn
+	ServerID, LeaderID       int
+	ClientPort, LogPort      int
+	State                    string
+	Term                     uint64
+	CommitIndex, LastApplied int64
+	Lock                     sync.Mutex
+	kvChan                   chan LogEntry //Commit channel to kvStore
+	eventCh                  chan interface{}
 }
 
 // Creates a raft object. This implements the SharedLog interface.
@@ -108,44 +111,28 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 
 		if server.Id == thisServerId { //Config for this server
 			raft.ServerID = thisServerId
-			raft.LeaderID = 0 //First server is leader by default
 			raft.ClientPort = server.ClientPort
 			raft.LogPort = server.LogPort
 			raft.LastLsn = 0
+			raft.CommitIndex = -1
+			raft.State = Follower
+			raft.Term = 0
 			break
 		}
 	}
 
 	raft.kvChan = commitCh //Store commit channel to KV-Store
+	raft.eventCh = make(chan interface{})
 
-	if thisServerId == raft.LeaderID {
-		//We are the leader, so start hearbeater
-		go heartBeater(&raft)
-	} else {
-		//Just a follower, listen for RPC from leader
-		go appendRPCListener(&raft)
+	go raft.loop()
+
+	if raftMap == nil {
+		raftMap = make(map[int]*Raft)
 	}
+	raftMap[thisServerId] = &raft
 
 	log.Print("Raft init, Server id:" + strconv.Itoa(raft.ServerID))
 	return &raft, nil
-}
-
-func (r *Raft) Append(data Command) (LogEntry, error) {
-
-	//Check if leader. If not, send redirect
-	if r.ServerID != r.LeaderID {
-		return LogItem{}, ErrRedirect(r.LeaderID)
-	}
-
-	r.Lock.Lock()
-
-	logItem := LogItem{r.LastLsn + 1, data, false}
-	r.Log = append(r.Log, logItem)
-	r.LastLsn++
-
-	r.Lock.Unlock()
-
-	return &logItem, nil
 }
 
 // ErrRedirect as an Error object

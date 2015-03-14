@@ -60,10 +60,10 @@ func main() {
 		}
 	*/
 
-	for i := 0; i <= 3; i++ { //Create 5 go routines representing 5 raft servers
+	for i := 0; i <= 4; i++ { //Create 5 go routines representing 5 raft servers
 
 		//Start server
-		if i == 3 {
+		if i == 4 {
 			startServer(i)
 		} else {
 			go startServer(i)
