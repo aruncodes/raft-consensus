@@ -60,6 +60,14 @@ func main() {
 		}
 	*/
 
+	//Read server config and populate ClusterInfo
+	err := raft.ReadConfig()
+
+	if err != nil {
+		log.Print(err.Error())
+		return
+	}
+
 	for i := 0; i <= 4; i++ { //Create 5 go routines representing 5 raft servers
 
 		//Start server

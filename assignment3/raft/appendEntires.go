@@ -46,13 +46,43 @@ func (raft *Raft) appendRPC(server ServerConfig, args AppendRPCArgs, reply *Appe
 	//Should be actual RPC
 	//Actual code commented below with same function name
 
-	remoteRaft, exists := raftMap[server.Id]
+	//Error simulator code starts
+	//State of this server
+	switch serverState[raft.ServerID] {
 
-	if !exists {
-		return errors.New("Server down")
+	case KILLED:
+		return nil
+		// <-raft.eventCh //A timeout before going to killed state (ignoring this will create byzantine situation)
+
+	case DROP_MSG:
+		return nil
+
+	case NORMAL:
+		break
 	}
 
-	responseCh := make(chan AppendRPCResults)
+	//State of server to which append is sent
+	switch serverState[server.Id] {
+
+	case KILLED:
+		return errors.New("Server down")
+
+	case DROP_MSG:
+		return nil
+
+	case NORMAL:
+		break
+	}
+	//Error simulator code ends
+	raftMapLock.Lock()
+	remoteRaft, exists := raftMap[server.Id]
+	raftMapLock.Unlock()
+
+	if !exists {
+		return errors.New("Server unavailable")
+	}
+
+	responseCh := make(chan AppendRPCResults, 5)
 	remoteRaft.eventCh <- AppendRPC{args, responseCh}
 	*reply = <-responseCh
 

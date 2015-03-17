@@ -10,11 +10,12 @@ const (
 	Follower  = "Follower"
 	Leader    = "Leader"
 	Candidate = "Candidate"
+	Killed    = "Killed" //For testing
 )
 
 const (
-	followerTimeout  = 3 * time.Second
-	heartbeatTimeout = 2 * time.Second
+	followerTimeout  = 500 * time.Millisecond
+	heartbeatTimeout = 250 * time.Millisecond
 )
 
 type ClientAppend struct {
@@ -49,8 +50,32 @@ func (raft *Raft) loop() {
 		case Leader:
 			raft.Leader()
 
+		case Killed: //Testing purposes
+			raft.Killed()
+
 		default:
+			raft.LogState("Unknown state")
 			break
+		}
+	}
+}
+
+func (raft *Raft) Killed() {
+
+	for {
+		event := <-raft.eventCh
+
+		switch event.(type) {
+
+		case bool:
+			alive := event.(bool)
+			if alive {
+				raft.State = Follower
+				return
+			}
+		default:
+			raft.LogState("Received something")
+			continue
 		}
 	}
 }
@@ -87,28 +112,74 @@ func (raft *Raft) Follower() {
 				raft.LogState("AppendRPC received")
 			}
 
-			reply := AppendRPCResults{raft.Term, true} //Send true for append now
-			ev.responseCh <- reply
-			//TODO: actual append
+			if raft.Term <= ev.args.Term {
+				//Must be the new leader
 
-			//Update Leader ID
-			raft.LeaderID = ev.args.LeaderId
+				//Update term
+				if raft.Term < ev.args.Term {
+					raft.Term = ev.args.Term
+					raft.VotedFor = -1
+				}
+
+				//Update Leader ID
+				raft.LeaderID = ev.args.LeaderId
+
+				reply := AppendRPCResults{raft.Term, true} //Send true for append now
+				ev.responseCh <- reply
+			} else {
+
+				//I have another leader
+				reply := AppendRPCResults{raft.Term, false} //Send true for append now
+				ev.responseCh <- reply
+			}
+
+			//TODO: actual append
 
 			r := time.Duration(rand.Intn(100)) * time.Millisecond
 			timer.Reset(followerTimeout + r)
 
 		case VoteRequest:
-			raft.LogState("Vote request received")
+			// raft.LogState("Vote request received")
 
 			ev := event.(VoteRequest)
 
-			reply := RequestVoteResult{raft.Term, true} //Vote to any requests for now
-			ev.responseCh <- reply
-			//TODO: Actual voting
+			candidateTerm := ev.args.Term
+
+			if raft.Term < candidateTerm {
+				//Candidate in higher term
+				raft.Term = candidateTerm
+				raft.VotedFor = int(ev.args.CandidateID)
+				ev.responseCh <- RequestVoteResult{raft.Term, true}
+				raft.LogState("Voted ")
+
+			} else if raft.Term == candidateTerm {
+
+				if (raft.VotedFor == -1) || (raft.VotedFor == int(ev.args.CandidateID)) {
+					//Not voted in this term or already voted for this server
+					ev.responseCh <- RequestVoteResult{raft.Term, true}
+					raft.LogState("Voted ")
+				} else {
+					//Already voted
+					ev.responseCh <- RequestVoteResult{raft.Term, false}
+					raft.LogState("Vote request rejected")
+				}
+			} else {
+				//Lesser term
+				ev.responseCh <- RequestVoteResult{raft.Term, false}
+				raft.LogState("Vote request rejected")
+			}
+
+			//Again wait since someone is a candidate
+			r := time.Duration(rand.Intn(100)) * time.Millisecond
+			timer.Reset(followerTimeout + r)
 
 		case Timeout:
 			raft.LogState("Time out received")
 			raft.State = Candidate
+			return
+
+		case bool:
+			raft.State = Killed
 			return
 
 		default:
@@ -116,6 +187,7 @@ func (raft *Raft) Follower() {
 		}
 	}
 }
+
 func (raft *Raft) Leader() {
 
 	raft.LogState("")
@@ -124,11 +196,9 @@ func (raft *Raft) Leader() {
 	timeoutFunc := func() {
 		raft.eventCh <- Timeout{}
 	}
-	timer := time.AfterFunc(heartbeatTimeout, timeoutFunc) //debug: 3 seconds
+	timer := time.AfterFunc(0, timeoutFunc) //For first time,start immediately
 
 	for {
-
-		raft.heartBeat()
 
 		event := <-raft.eventCh
 
@@ -147,73 +217,118 @@ func (raft *Raft) Leader() {
 
 		case AppendRPC:
 			raft.LogState("AppendRPC received")
-			//Someone else is leader
+			//TODO: Someone else is leader (or thinks)
+			ev := event.(AppendRPC)
+			// log.Print("AppendRPC received from ", ev.args.LeaderId, " term ", ev.args.Term)
+
+			if ev.args.Term > raft.Term {
+				//He is actually the leader
+				raft.State = Follower
+				raft.Term = ev.args.Term
+				raft.VotedFor = -1
+
+				ev.responseCh <- AppendRPCResults{raft.Term, true}
+				return // return as follower
+			} else {
+				//We are actually the leader
+				ev.responseCh <- AppendRPCResults{raft.Term, false}
+			}
 
 		case VoteRequest:
-			raft.LogState("Vote request received")
+			// raft.LogState("Vote request received")
 			//Some one became a candidate, network problem?
+			ev := event.(VoteRequest)
+
+			if ev.args.Term > raft.Term {
+				//Am I mistakenly thought I am leader?
+
+				raft.State = Follower
+				raft.Term = ev.args.Term
+				raft.VotedFor = -1
+				ev.responseCh <- RequestVoteResult{raft.Term, true}
+				raft.LogState("Voted")
+			} else {
+				ev.responseCh <- RequestVoteResult{raft.Term, false}
+				raft.LogState("Vote request rejected")
+			}
 
 		case Timeout:
 			raft.LogState("Heartbeat time out")
 			//Send append RPCs
+			raft.heartBeat()
 			timer.Reset(heartbeatTimeout)
-			continue
+
+			if raft.State == Leader {
+				continue //Wait for next event/timeout
+			} else {
+				return //State could be changed while heart beating
+			}
+
+		case bool:
+			raft.State = Killed
+			return
 
 		default:
 			raft.LogState("Unknown received")
 		}
 	}
 }
+
 func (raft *Raft) Candidate() {
 
+	//Increment term and Request votes
+	raft.Term++
+	raft.VotedFor = -1
+
 	raft.LogState("")
+
+	//Send vote request to all
+	votes := 0
+	for _, server := range ClusterInfo.Servers {
+
+		if raft.ServerID == server.Id {
+			// The current running server
+			votes++ // self vote
+			raft.VotedFor = raft.ServerID
+			continue
+		}
+
+		//Create args and reply
+		args := RequestVoteArgs{raft.Term, uint64(raft.ServerID)}
+		reply := RequestVoteResult{}
+
+		//Request vote by RPC (fake)
+		err := raft.requestVote(server, args, &reply)
+
+		if err != nil {
+			log.Println(err.Error())
+			continue
+		}
+
+		if reply.VoteGranted == true {
+			votes++
+		}
+	}
+
+	if votes > len(ClusterInfo.Servers)/2 {
+		//Got majority of votes
+		raft.State = Leader
+		raft.LeaderID = raft.ServerID
+		return
+	}
+
+	//Reached here means didn't get majority of votes,
+	//So start a timer and wait to see if we get any append RPC from
+	//new leader
 
 	timeoutFunc := func() {
 		raft.eventCh <- Timeout{}
 	}
 
+	r := time.Duration(rand.Intn(100)) * time.Millisecond
+	timer := time.AfterFunc(followerTimeout+r, timeoutFunc) //debug: 3 seconds + some millis
+
 	for {
-
-		//Send vote request to all
-		votes := 0
-		for _, server := range ClusterInfo.Servers {
-
-			if raft.ServerID == server.Id {
-				// The current running server
-				votes++ // self vote
-				continue
-			}
-
-			//Create args and reply
-			args := RequestVoteArgs{raft.Term, uint64(raft.ServerID)}
-			reply := RequestVoteResult{}
-
-			//Request vote by RPC (fake)
-			err := raft.requestVote(server, args, &reply)
-
-			if err != nil {
-				log.Println(err.Error())
-				continue
-			}
-
-			if reply.VoteGranted == true {
-				votes++
-			}
-		}
-
-		if votes > len(ClusterInfo.Servers)/2 {
-			//Got majority of votes
-			raft.State = Leader
-			raft.LeaderID = raft.ServerID
-			return
-		}
-
-		//Reached here means didn't get majority of votes,
-		//So start a timer and wait to see if we get any append RPC from
-		//new leader
-
-		r := time.Duration(rand.Intn(100)) * time.Millisecond
-		timer := time.AfterFunc(followerTimeout+r, timeoutFunc) //debug: 3 seconds + some millis
 
 		event := <-raft.eventCh
 
@@ -241,6 +356,7 @@ func (raft *Raft) Candidate() {
 			if ev.args.Term > raft.Term {
 				//He is a leader
 				raft.Term = ev.args.Term
+				raft.VotedFor = -1
 				raft.State = Follower
 				success = true
 			}
@@ -251,12 +367,13 @@ func (raft *Raft) Candidate() {
 				timer.Stop()
 				return
 			}
+
 		case VoteRequest:
-			raft.LogState("Vote request received")
 			//Do not vote as i am a candidate
 			ev := event.(VoteRequest)
 
 			reply := RequestVoteResult{raft.Term, false}
+			raft.LogState("Vote request rejected")
 			ev.responseCh <- reply
 
 		case Timeout:
@@ -264,8 +381,13 @@ func (raft *Raft) Candidate() {
 			//Stand again as candidate
 			//Increment term and Request votes
 			raft.Term++
+			raft.VotedFor = -1
 			//TODO: Fix isolated server increments term problem
-			continue
+			return //Come back as candidate since state is not changed
+
+		case bool:
+			raft.State = Killed
+			return
 
 		default:
 			raft.LogState("Unknown received")
@@ -274,5 +396,11 @@ func (raft *Raft) Candidate() {
 }
 
 func (raft *Raft) LogState(msg string) {
-	log.Print("Server:", raft.ServerID, " - ", raft.State, ": ", msg)
+
+	if raft.State == Leader {
+		//A line to distinguish rounds of new leaders
+		log.Print("\r---------------------------------")
+	}
+
+	log.Print("S", raft.ServerID, " ", raft.State, " (T", raft.Term, ")", " (L", raft.LeaderID, ")", ": ", msg)
 }

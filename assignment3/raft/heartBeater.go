@@ -1,7 +1,7 @@
 package raft
 
 import (
-// "log"
+	"log"
 )
 
 func (raft *Raft) heartBeat() {
@@ -28,10 +28,22 @@ func (raft *Raft) heartBeat() {
 
 		args := AppendRPCArgs{raft.Term, raft.LeaderID, logSlice} //Send slice with new entires
 		var reply AppendRPCResults                                //reply from RPC
-		err := raft.appendRPC(server, args, &reply)               //Make RPC
+		// log.Print("sending rpc to ", server.Id)
+		err := raft.appendRPC(server, args, &reply) //Make RPC
+		// log.Print("recevied rpc")
 
 		if err != nil {
+			log.Print(err.Error())
 			continue
+		}
+
+		if reply.Term > raft.Term {
+			//There is new leader with a higher term
+			//Revert to follower
+			raft.State = Follower
+			raft.Term = reply.Term
+			raft.VotedFor = -1
+			break
 		}
 
 		//Count votes

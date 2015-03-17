@@ -1,8 +1,10 @@
 package main
 
 import (
+	"assignment3/raft"
 	"bufio"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -11,13 +13,42 @@ import (
 	"time"
 )
 
-const LEADER_PORT = 9000
 const NUM_SERVERS = 5
 const SERVER_NAME = "kvstore" //Must be inside GOPATH
 
 var proc []*exec.Cmd
 
-func TestCluster(t *testing.T) {
+func TestRaft(t *testing.T) {
+
+	go main() //Starts all servers
+
+	var leaderId1, leaderId2 int
+	ack := make(chan bool)
+
+	time.AfterFunc(1*time.Second, func() {
+		leaderId1 = raft.KillLeader()
+		log.Print("Killed leader:", leaderId1)
+		// raft.MakeServerUnavailable(2)
+	})
+
+	time.AfterFunc(2*time.Second, func() {
+		leaderId2 = raft.KillLeader()
+		log.Print("Killed leader:", leaderId2)
+		// raft.MakeServerAvailable(leaderId)
+	})
+
+	time.AfterFunc(5*time.Second, func() {
+		raft.ResurrectServer(leaderId1)
+		log.Print("Resurrected previous leader:", leaderId1)
+		// raft.MakeServerAvailable(leaderId)
+	})
+
+	time.AfterFunc(10*time.Second, func() { ack <- true })
+
+	<-ack
+}
+
+func _TestCluster(t *testing.T) {
 	proc = make([]*exec.Cmd, NUM_SERVERS)
 
 	startSingleServer(1) //Server that is not a leader

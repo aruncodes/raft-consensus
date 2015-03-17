@@ -71,8 +71,9 @@ type ClusterConfig struct {
 }
 
 var ClusterInfo ClusterConfig
-
-var raftMap map[int]*Raft //To get raft reference of all 5 server, required to fake RPCs
+var nServers int
+var raftMap map[int]*Raft  //To get raft reference of all 5 server, required to fake RPCs
+var raftMapLock sync.Mutex //For accessing global raft map
 
 // Raft implements the SharedLog interface.
 type Raft struct {
@@ -83,6 +84,7 @@ type Raft struct {
 	State                    string
 	Term                     uint64
 	CommitIndex, LastApplied int64
+	VotedFor                 int //Voted for whom in this term
 	Lock                     sync.Mutex
 	kvChan                   chan LogEntry //Commit channel to kvStore
 	eventCh                  chan interface{}
@@ -93,18 +95,6 @@ type Raft struct {
 // When the process starts, the local disk log is read and all committed
 // entries are recovered and replayed
 func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*Raft, error) {
-
-	//Get config.json file from $GOPATH/src/assignment3/
-	filePath := os.Getenv("GOPATH") + "/src/assignment3/config.json"
-	file, err := ioutil.ReadFile(filePath)
-	if err != nil {
-		return nil, errors.New("Couldn't open config file from :" + filePath)
-	}
-
-	err = json.Unmarshal(file, &ClusterInfo)
-	if err != nil {
-		return nil, errors.New("Wrong format of config file")
-	}
 
 	raft := Raft{} // empty raft object
 	for _, server := range config.Servers {
@@ -117,12 +107,13 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 			raft.CommitIndex = -1
 			raft.State = Follower
 			raft.Term = 0
+			raft.VotedFor = -1
 			break
 		}
 	}
 
 	raft.kvChan = commitCh //Store commit channel to KV-Store
-	raft.eventCh = make(chan interface{})
+	raft.eventCh = make(chan interface{}, 5)
 
 	go raft.loop()
 
@@ -133,6 +124,26 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 
 	log.Print("Raft init, Server id:" + strconv.Itoa(raft.ServerID))
 	return &raft, nil
+}
+
+func ReadConfig() error {
+	//Get config.json file from $GOPATH/src/assignment3/
+	filePath := os.Getenv("GOPATH") + "/src/assignment3/config.json"
+	file, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return errors.New("Couldn't open config file from :" + filePath)
+	}
+
+	err = json.Unmarshal(file, &ClusterInfo)
+	if err != nil {
+		return errors.New("Wrong format of config file")
+	}
+
+	if nServers == 0 {
+		nServers = len(ClusterInfo.Servers)
+	}
+
+	return nil
 }
 
 // ErrRedirect as an Error object
