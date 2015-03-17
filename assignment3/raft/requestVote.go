@@ -20,31 +20,19 @@ func (raft *Raft) requestVote(server ServerConfig, args RequestVoteArgs, reply *
 	//Here, it communicates using channels of remote raft server
 
 	//Error simulator code starts
-	switch serverState[server.Id] { //State of server to which vote is requesting
-
-	case KILLED:
+	//State of server to which vote is requesting
+	switch serverState[server.Id] {
+	case KILLED, DROP_MSG:
 		return nil
-
-	case DROP_MSG:
-		return nil
-
-	case NORMAL:
-		break
 	}
 
 	//State of this server
 	switch serverState[raft.ServerID] {
-
-	case KILLED:
+	case KILLED, DROP_MSG:
 		return nil
-
-	case DROP_MSG:
-		return nil
-
-	case NORMAL:
-		break
 	}
 	//Error simulator code ends
+
 	raftMapLock.Lock()
 	remoteRaft, exists := raftMap[server.Id]
 	raftMapLock.Unlock()

@@ -7,14 +7,50 @@ import (
 var appendRPCState int
 var voteRPCState int
 
-var raftMapBackup map[int]*Raft
 var serverState [5]int
+
+type ErrorSimulation struct {
+	State string
+}
 
 const ( //Server States
 	NORMAL   = 0
 	KILLED   = 1
 	DROP_MSG = 2
 )
+
+func KillServer(serverId int) {
+
+	raftMap[serverId].eventCh <- ErrorSimulation{Killed}
+	serverState[serverId] = KILLED
+}
+
+func ResurrectServer(serverId int) {
+	serverState[serverId] = NORMAL
+	raftMap[serverId].eventCh <- ErrorSimulation{Follower}
+}
+
+func ResurrectServerAsLeader(serverId int) {
+	serverState[serverId] = NORMAL
+	raftMap[serverId].eventCh <- ErrorSimulation{Leader}
+}
+
+func KillLeader() int {
+
+	//Find leader
+	for _, serverRaft := range raftMap {
+
+		if serverRaft.State == Leader {
+			KillServer(serverRaft.ServerID)
+			return serverRaft.ServerID
+		}
+	}
+	return -1
+}
+
+//Old methods, not used as of now
+
+var raftMapBackup map[int]*Raft
 
 func MakeServerUnavailable(serverID int) error {
 
@@ -66,29 +102,4 @@ func MakeServerAvailable(serverID int) error {
 	raftMapLock.Unlock()
 
 	return nil
-}
-
-func KillServer(serverId int) {
-
-	raftMap[serverId].eventCh <- true
-	serverState[serverId] = KILLED
-}
-
-func ResurrectServer(serverId int) {
-	serverState[serverId] = NORMAL
-	raftMap[serverId].eventCh <- true
-}
-
-func KillLeader() int {
-
-	//Find leader
-	for _, serverRaft := range raftMap {
-
-		if serverRaft.State == Leader {
-			// MakeServerUnavailable(serverRaft.ServerID)
-			KillServer(serverRaft.ServerID)
-			return serverRaft.ServerID
-		}
-	}
-	return -1
 }

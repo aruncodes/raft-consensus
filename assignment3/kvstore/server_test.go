@@ -38,8 +38,14 @@ func TestRaft(t *testing.T) {
 	})
 
 	time.AfterFunc(5*time.Second, func() {
-		raft.ResurrectServer(leaderId1)
+		raft.ResurrectServerAsLeader(leaderId1)
 		log.Print("Resurrected previous leader:", leaderId1)
+		// raft.MakeServerAvailable(leaderId)
+	})
+
+	time.AfterFunc(3*time.Second, func() {
+		raft.ResurrectServer(leaderId2)
+		log.Print("Resurrected previous leader:", leaderId2)
 		// raft.MakeServerAvailable(leaderId)
 	})
 

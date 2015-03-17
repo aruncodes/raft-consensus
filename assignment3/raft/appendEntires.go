@@ -50,30 +50,18 @@ func (raft *Raft) appendRPC(server ServerConfig, args AppendRPCArgs, reply *Appe
 	//State of this server
 	switch serverState[raft.ServerID] {
 
-	case KILLED:
+	case KILLED, DROP_MSG:
 		return nil
-		// <-raft.eventCh //A timeout before going to killed state (ignoring this will create byzantine situation)
-
-	case DROP_MSG:
-		return nil
-
-	case NORMAL:
-		break
 	}
 
 	//State of server to which append is sent
 	switch serverState[server.Id] {
 
-	case KILLED:
+	case KILLED, DROP_MSG:
 		return errors.New("Server down")
-
-	case DROP_MSG:
-		return nil
-
-	case NORMAL:
-		break
 	}
 	//Error simulator code ends
+
 	raftMapLock.Lock()
 	remoteRaft, exists := raftMap[server.Id]
 	raftMapLock.Unlock()

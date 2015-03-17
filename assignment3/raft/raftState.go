@@ -67,14 +67,13 @@ func (raft *Raft) Killed() {
 
 		switch event.(type) {
 
-		case bool:
-			alive := event.(bool)
-			if alive {
-				raft.State = Follower
-				return
-			}
+		case ErrorSimulation:
+			ev := event.(ErrorSimulation)
+			raft.State = ev.State
+			return
+
 		default:
-			raft.LogState("Received something")
+			raft.LogState("Received something while dead")
 			continue
 		}
 	}
@@ -144,30 +143,33 @@ func (raft *Raft) Follower() {
 			ev := event.(VoteRequest)
 
 			candidateTerm := ev.args.Term
+			voted := false
 
 			if raft.Term < candidateTerm {
 				//Candidate in higher term
 				raft.Term = candidateTerm
 				raft.VotedFor = int(ev.args.CandidateID)
-				ev.responseCh <- RequestVoteResult{raft.Term, true}
+				voted = true
 				raft.LogState("Voted ")
 
 			} else if raft.Term == candidateTerm {
 
 				if (raft.VotedFor == -1) || (raft.VotedFor == int(ev.args.CandidateID)) {
 					//Not voted in this term or already voted for this server
-					ev.responseCh <- RequestVoteResult{raft.Term, true}
+					voted = true
 					raft.LogState("Voted ")
 				} else {
 					//Already voted
-					ev.responseCh <- RequestVoteResult{raft.Term, false}
+					voted = false
 					raft.LogState("Vote request rejected")
 				}
 			} else {
 				//Lesser term
-				ev.responseCh <- RequestVoteResult{raft.Term, false}
+				voted = false
 				raft.LogState("Vote request rejected")
 			}
+
+			ev.responseCh <- RequestVoteResult{raft.Term, voted} //Actual vote
 
 			//Again wait since someone is a candidate
 			r := time.Duration(rand.Intn(100)) * time.Millisecond
@@ -178,8 +180,9 @@ func (raft *Raft) Follower() {
 			raft.State = Candidate
 			return
 
-		case bool:
-			raft.State = Killed
+		case ErrorSimulation:
+			ev := event.(ErrorSimulation)
+			raft.State = ev.State
 			return
 
 		default:
@@ -261,11 +264,13 @@ func (raft *Raft) Leader() {
 			if raft.State == Leader {
 				continue //Wait for next event/timeout
 			} else {
+				timer.Stop()
 				return //State could be changed while heart beating
 			}
 
-		case bool:
-			raft.State = Killed
+		case ErrorSimulation:
+			ev := event.(ErrorSimulation)
+			raft.State = ev.State
 			return
 
 		default:
@@ -385,8 +390,9 @@ func (raft *Raft) Candidate() {
 			//TODO: Fix isolated server increments term problem
 			return //Come back as candidate since state is not changed
 
-		case bool:
-			raft.State = Killed
+		case ErrorSimulation:
+			ev := event.(ErrorSimulation)
+			raft.State = ev.State
 			return
 
 		default:
