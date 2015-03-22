@@ -18,7 +18,7 @@ const SERVER_NAME = "kvstore" //Must be inside GOPATH
 
 var proc []*exec.Cmd
 
-func _TestRaft(t *testing.T) {
+func TestRaft(t *testing.T) {
 
 	go main() //Starts all servers
 

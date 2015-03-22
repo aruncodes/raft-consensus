@@ -159,9 +159,11 @@ func (raft *Raft) Follower() {
 				raft.LogState("Vote request rejected")
 			}
 
-			//Disk write
-			err := raft.WriteStateToFile(FILENAME)
-			checkError(err)
+			if voted {
+				//Disk write
+				err := raft.WriteStateToFile(FILENAME)
+				checkError(err)
+			}
 
 			ev.responseCh <- RequestVoteResult{raft.Term, voted} //Actual vote
 
