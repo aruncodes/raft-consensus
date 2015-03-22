@@ -6,9 +6,6 @@ import (
 
 func (raft *Raft) heartBeat() {
 
-	votes := 0 //Votes from majority
-	startLogIndex := raft.getLatestLogIndex()
-
 	//Send appendRPC to all server
 	//starting from startLogIndex
 	for _, server := range ClusterInfo.Servers {
@@ -21,16 +18,20 @@ func (raft *Raft) heartBeat() {
 		//Create args to call RPC
 		var logSlice []LogItem
 
-		if startLogIndex > raft.CommitIndex {
-			//Add if more entires are added
-			logSlice = raft.Log[startLogIndex : startLogIndex+1] //Only one entry for now
+		if raft.LastLsn >= raft.NextIndex[server.Id] {
+			//Followers log needs to be filled up
+			nextIndex := raft.NextIndex[server.Id]
+			logSlice = raft.Log[nextIndex:]
 		}
 
-		args := AppendRPCArgs{raft.Term, raft.LeaderID, logSlice} //Send slice with new entires
-		var reply AppendRPCResults                                //reply from RPC
-		// log.Print("sending rpc to ", server.Id)
+		prevLogIndex := raft.NextIndex[server.Id] - 1
+		prevLogTerm := raft.Log[prevLogIndex].Term
+
+		args := AppendRPCArgs{raft.Term, raft.LeaderID,
+			prevLogIndex, prevLogTerm, logSlice, uint64(raft.CommitIndex)} //Send slice with new entires
+
+		var reply AppendRPCResults                  //reply from RPC
 		err := raft.appendRPC(server, args, &reply) //Make RPC
-		// log.Print("recevied rpc")
 
 		if err != nil {
 			log.Print(err.Error())
@@ -46,36 +47,39 @@ func (raft *Raft) heartBeat() {
 			break
 		}
 
-		//Count votes
-		if reply.Success == true {
-			votes++
+		if reply.Success {
+			//Update nextIndex and matchIndex
+			raft.NextIndex[server.Id] = raft.LastLsn + 1
+			raft.MatchIndex[server.Id] = raft.LastLsn + 1
+		} else {
+			//Log inconsistency
+			//Decrement nextIndex and retry
+			raft.NextIndex[server.Id]--
 		}
+
 	}
 
-	if votes >= len(ClusterInfo.Servers)/2 { //Majority
-		// log.Print("Got majority, log entry:", startLogIndex)
-		if startLogIndex != -1 && !raft.Log[startLogIndex].Committed() {
-			//If that log entry actually exists and not committed
-			//Send to commit channel, KV Store will be waiting
-			raft.kvChan <- raft.Log[startLogIndex]
+	//If majority of servers are with matching log , commit till that point
+	for i := raft.CommitIndex + 1; i <= uint64(raft.LastLsn); i++ {
+		votes := 0
+		for j := 0; j < nServers; j++ {
+			if uint64(raft.MatchIndex[j]) >= i && raft.Log[i].Term == raft.Term {
+				votes++
+			}
+		}
+
+		if votes > nServers/2 {
+			//Got majority for that entry, so commit
+			raft.kvChan <- raft.Log[i]
 
 			//Update status as commited
 			raft.Lock.Lock()
-			raft.Log[startLogIndex].COMMITTED = true
+			raft.Log[i].COMMITTED = true
 			raft.Lock.Unlock()
 
-			raft.CommitIndex = startLogIndex
-		}
-	}
-}
-
-func (raft *Raft) getLatestLogIndex() int64 {
-
-	for i, item := range raft.Log {
-		if !item.Committed() {
-			return int64(i) //First uncommitted entry
+			//Update commit index
+			raft.CommitIndex = i
 		}
 	}
 
-	return -1
 }

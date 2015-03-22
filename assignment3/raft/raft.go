@@ -35,6 +35,7 @@ type LogItem struct {
 	LSN       Lsn
 	DATA      Command
 	COMMITTED bool
+	Term      uint64
 }
 
 func (l LogItem) Lsn() Lsn {
@@ -70,24 +71,28 @@ type ClusterConfig struct {
 	Servers []ServerConfig // All servers in this cluster
 }
 
-var ClusterInfo ClusterConfig
-var nServers int
-var raftMap map[int]*Raft  //To get raft reference of all 5 server, required to fake RPCs
-var raftMapLock sync.Mutex //For accessing global raft map
+var ClusterInfo ClusterConfig //Struct with all raft configs
+var nServers int              //Number of servers in cluster
+var raftMap map[int]*Raft     //To get raft reference of all 5 server, required to fake RPCs
+var raftMapLock sync.Mutex    //For accessing global raft map
 
 // Raft implements the SharedLog interface.
 type Raft struct {
-	Log                      []LogItem
+	ServerID, LeaderID  int
+	ClientPort, LogPort int
+	State               string
+	Lock                sync.Mutex
+	kvChan              chan LogEntry //Commit channel to kvStore
+	eventCh             chan interface{}
+
+	//Raft specific
 	LastLsn                  Lsn
-	ServerID, LeaderID       int
-	ClientPort, LogPort      int
-	State                    string
+	Log                      []LogItem
 	Term                     uint64
-	CommitIndex, LastApplied int64
+	CommitIndex, LastApplied uint64
+	NextIndex                []Lsn
+	MatchIndex               []Lsn
 	VotedFor                 int //Voted for whom in this term
-	Lock                     sync.Mutex
-	kvChan                   chan LogEntry //Commit channel to kvStore
-	eventCh                  chan interface{}
 }
 
 // Creates a raft object. This implements the SharedLog interface.
@@ -103,17 +108,28 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 			raft.ServerID = thisServerId
 			raft.ClientPort = server.ClientPort
 			raft.LogPort = server.LogPort
-			raft.LastLsn = 0
-			raft.CommitIndex = -1
-			raft.State = Follower
-			raft.Term = 0
-			raft.VotedFor = -1
 			break
 		}
 	}
 
+	raft.Log = append(raft.Log, LogItem{}) //Dummy item
+
+	//Log indices
+	raft.LastLsn = 0
+	raft.CommitIndex = 0
+	raft.LastApplied = 0
+
+	//Raft states
+	raft.State = Follower
+	raft.Term = 0
+	raft.VotedFor = -1
+
+	//Other server states
+	raft.NextIndex = make([]Lsn, nServers, nServers)
+	raft.MatchIndex = make([]Lsn, nServers, nServers)
+
 	raft.kvChan = commitCh //Store commit channel to KV-Store
-	raft.eventCh = make(chan interface{}, 5)
+	raft.eventCh = make(chan interface{}, nServers)
 
 	go raft.loop()
 

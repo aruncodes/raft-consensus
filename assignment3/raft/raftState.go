@@ -14,8 +14,8 @@ const (
 )
 
 const (
-	followerTimeout  = 500 * time.Millisecond
-	heartbeatTimeout = 250 * time.Millisecond
+	followerTimeout  = 3 * time.Second //500 * time.Millisecond
+	heartbeatTimeout = 2 * time.Second //250 * time.Millisecond
 )
 
 type ClientAppend struct {
@@ -99,7 +99,7 @@ func (raft *Raft) Follower() {
 
 			//Sent false to make it redirect
 			ev := event.(ClientAppend)
-			logItem := LogItem{0, ev.command, false}
+			logItem := LogItem{0, ev.command, false, raft.Term}
 			ev.responseCh <- logItem
 
 		case AppendRPC:
@@ -111,28 +111,11 @@ func (raft *Raft) Follower() {
 				raft.LogState("AppendRPC received")
 			}
 
-			if raft.Term <= ev.args.Term {
-				//Must be the new leader
-
-				//Update term
-				if raft.Term < ev.args.Term {
-					raft.Term = ev.args.Term
-					raft.VotedFor = -1
-				}
-
-				//Update Leader ID
-				raft.LeaderID = ev.args.LeaderId
-
-				reply := AppendRPCResults{raft.Term, true} //Send true for append now
-				ev.responseCh <- reply
-			} else {
-
-				//I have another leader
-				reply := AppendRPCResults{raft.Term, false} //Send true for append now
-				ev.responseCh <- reply
-			}
-
 			//TODO: actual append
+			success := raft.appendEntries(ev.args)
+
+			reply := AppendRPCResults{raft.Term, success}
+			ev.responseCh <- reply
 
 			r := time.Duration(rand.Intn(100)) * time.Millisecond
 			timer.Reset(followerTimeout + r)
@@ -201,6 +184,12 @@ func (raft *Raft) Leader() {
 	}
 	timer := time.AfterFunc(0, timeoutFunc) //For first time,start immediately
 
+	//Update raft state of followers known to leader
+	for i, _ := range raft.NextIndex {
+		raft.NextIndex[i] = raft.LastLsn + 1
+		raft.MatchIndex[i] = 0
+	}
+
 	for {
 
 		event := <-raft.eventCh
@@ -212,7 +201,7 @@ func (raft *Raft) Leader() {
 
 			ev := event.(ClientAppend)
 
-			logItem := LogItem{raft.LastLsn + 1, ev.command, false}
+			logItem := LogItem{raft.LastLsn + 1, ev.command, false, raft.Term}
 			raft.Log = append(raft.Log, logItem)
 			raft.LastLsn++
 

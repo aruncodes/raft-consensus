@@ -9,12 +9,12 @@ import (
 )
 
 type AppendRPCArgs struct {
-	Term     uint64
-	LeaderId int
-	// PrevLogIndex	Lsn
-	// prevLogTerm	uint64
-	Log []LogItem
-	// leaderCommit	uint64
+	Term         uint64
+	LeaderId     int
+	PrevLogIndex Lsn
+	PrevLogTerm  uint64
+	Log          []LogItem
+	LeaderCommit uint64
 }
 
 type AppendRPCResults struct {
@@ -42,6 +42,69 @@ func (r *Raft) Append(data Command) (LogEntry, error) {
 	return logItem, nil
 }
 
+//Append from leader
+func (raft *Raft) appendEntries(args AppendRPCArgs) bool {
+
+	if raft.Term <= args.Term {
+		//Must be the new leader
+
+		//Update term
+		if raft.Term < args.Term {
+			raft.Term = args.Term
+			raft.VotedFor = -1
+		}
+
+		//Update Leader ID
+		raft.LeaderID = args.LeaderId
+
+		if raft.Log[args.PrevLogIndex].Term != args.PrevLogTerm {
+			//Log doesnt contain an entry at PrevLogIndex whose term matches
+			// prevLogTerm
+
+			//Remove that entry and everything after it
+			raft.Log = raft.Log[:args.PrevLogIndex]
+
+			return false
+		}
+
+		//Else append the entries
+		raft.Lock.Lock()
+		raft.Log = append(raft.Log, args.Log...)
+		raft.Lock.Unlock()
+
+		if args.LeaderCommit > raft.CommitIndex {
+			//update commit index to min of leader commit and last entry added
+
+			lastIndex := raft.Log[len(raft.Log)-1].Lsn()
+			min := uint64(lastIndex)
+			if min > args.LeaderCommit {
+				min = args.LeaderCommit
+			}
+
+			raft.CommitIndex = min
+		}
+
+		//Apply to state machine if commitIndex > lastApplied
+		if raft.CommitIndex > raft.LastApplied {
+			for i, _ := range raft.Log[raft.LastApplied+1 : raft.CommitIndex+1] {
+				//Apply from last applied to current commit index
+				raft.Log[i].COMMITTED = true
+				raft.kvChan <- raft.Log[i]
+			}
+
+			//Update lastApplied
+			raft.LastApplied = raft.CommitIndex
+		}
+
+		return true
+	} else {
+		//I have another leader
+		return false
+	}
+
+}
+
+//RPC call to followers
 func (raft *Raft) appendRPC(server ServerConfig, args AppendRPCArgs, reply *AppendRPCResults) error {
 	//Should be actual RPC
 	//Actual code commented below with same function name

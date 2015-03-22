@@ -30,6 +30,12 @@ func kvStoreHandler(commitCh chan raft.LogEntry, kvResponse chan KVResponse) {
 			continue //No one is waiting for response
 		}
 
+		if logEntry.Committed() {
+			//Sent while being a follower, so client is not waiting
+			//No response need to be sent
+			continue
+		}
+
 		//Send back response to kvResponse channel
 		//clientConnManager will be waiting
 		kvResponse <- KVResponse{logEntry.Lsn(), response}
@@ -76,7 +82,7 @@ func setCas(command Command, kvstore map[string]value, commitCh chan raft.LogEnt
 	//Inform KV-Handler by sending a fake log entry to expire
 	sendExpiry := func() {
 		command := raft.Command{"expire", key, 0, 0, version, ""}
-		fakeLogEntry := raft.LogItem{raft.Lsn(0), command, true}
+		fakeLogEntry := raft.LogItem{raft.Lsn(0), command, true, 0}
 
 		commitCh <- fakeLogEntry
 	}
