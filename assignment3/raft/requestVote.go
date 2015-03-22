@@ -6,10 +6,10 @@ import (
 )
 
 type RequestVoteArgs struct {
-	Term        uint64
-	CandidateID uint64
-	// LastLogIndex Lsn
-	// LastLogTerm  uint64
+	Term         uint64
+	CandidateID  uint64
+	LastLogIndex Lsn
+	LastLogTerm  uint64
 }
 
 type RequestVoteResult struct {

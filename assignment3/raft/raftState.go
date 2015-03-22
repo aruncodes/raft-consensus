@@ -14,8 +14,8 @@ const (
 )
 
 const (
-	followerTimeout  = 3 * time.Second // 500 * time.Millisecond
-	heartbeatTimeout = 2 * time.Second // 250 * time.Millisecond
+	followerTimeout  = /*3 * time.Second //*/ 500 * time.Millisecond
+	heartbeatTimeout = /*2 * time.Second //*/ 250 * time.Millisecond
 )
 
 type ClientAppend struct {
@@ -136,10 +136,19 @@ func (raft *Raft) Follower() {
 
 			if raft.Term < candidateTerm {
 				//Candidate in higher term
-				raft.Term = candidateTerm
-				raft.VotedFor = int(ev.args.CandidateID)
-				voted = true
-				raft.LogState("Voted ")
+				if ev.args.LastLogIndex >= raft.LastLsn &&
+					ev.args.LastLogTerm >= raft.Log[raft.LastLsn].Term {
+					//Candidates log is atleast up to date as me
+
+					raft.Term = candidateTerm
+					raft.VotedFor = int(ev.args.CandidateID)
+					voted = true
+					raft.LogState("Voted ")
+				} else {
+					//Log not upto date
+					voted = false
+					raft.LogState("Vote request rejected")
+				}
 
 			} else if raft.Term == candidateTerm {
 
@@ -310,7 +319,8 @@ func (raft *Raft) Candidate() {
 		}
 
 		//Create args and reply
-		args := RequestVoteArgs{raft.Term, uint64(raft.ServerID)}
+		lastLogTerm := raft.Log[raft.LastLsn].Term
+		args := RequestVoteArgs{raft.Term, uint64(raft.ServerID), raft.LastLsn, lastLogTerm}
 		reply := RequestVoteResult{}
 
 		//Request vote by RPC (fake)
