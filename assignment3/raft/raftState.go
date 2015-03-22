@@ -14,8 +14,8 @@ const (
 )
 
 const (
-	followerTimeout  = 3 * time.Second //500 * time.Millisecond
-	heartbeatTimeout = 2 * time.Second //250 * time.Millisecond
+	followerTimeout  = 3 * time.Second // 500 * time.Millisecond
+	heartbeatTimeout = 2 * time.Second // 250 * time.Millisecond
 )
 
 type ClientAppend struct {
@@ -111,9 +111,15 @@ func (raft *Raft) Follower() {
 				raft.LogState("AppendRPC received")
 			}
 
-			//TODO: actual append
 			success := raft.appendEntries(ev.args)
 
+			if success && len(ev.args.Log) > 0 {
+				//Disk write if log was updated
+				err := raft.WriteStateToFile(FILENAME)
+				checkError(err)
+			}
+
+			//Respond to RPC
 			reply := AppendRPCResults{raft.Term, success}
 			ev.responseCh <- reply
 
@@ -151,6 +157,10 @@ func (raft *Raft) Follower() {
 				voted = false
 				raft.LogState("Vote request rejected")
 			}
+
+			//Disk write
+			err := raft.WriteStateToFile(FILENAME)
+			checkError(err)
 
 			ev.responseCh <- RequestVoteResult{raft.Term, voted} //Actual vote
 
@@ -237,8 +247,11 @@ func (raft *Raft) Leader() {
 				raft.State = Follower
 				raft.Term = ev.args.Term
 				raft.VotedFor = -1
+
 				ev.responseCh <- RequestVoteResult{raft.Term, true}
 				raft.LogState("Voted")
+
+				return // since state changed
 			} else {
 				ev.responseCh <- RequestVoteResult{raft.Term, false}
 				raft.LogState("Vote request rejected")
@@ -249,6 +262,12 @@ func (raft *Raft) Leader() {
 			//Send append RPCs
 			raft.heartBeat()
 			timer.Reset(heartbeatTimeout)
+
+			//Debug code
+			// if raft.ServerID == 1 {
+			// 	serverState[raft.ServerID] = KILLED
+			// 	raft.State = Killed
+			// }
 
 			if raft.State == Leader {
 				continue //Wait for next event/timeout
@@ -342,24 +361,29 @@ func (raft *Raft) Candidate() {
 
 		case AppendRPC:
 			raft.LogState("AppendRPC received")
-			//This must from a new leader.
+			//This must be from a new leader.
 			//Verfiy his term and respond
 			ev := event.(AppendRPC)
 
-			success := false
 			if ev.args.Term > raft.Term {
 				//He is a leader
+				//Change to follower state and resend this
+				//to event channel so that this will be
+				//handled while being a follower
+
 				raft.Term = ev.args.Term
 				raft.VotedFor = -1
 				raft.State = Follower
-				success = true
-			}
-			reply := AppendRPCResults{raft.Term, success} //Send true for append now
-			ev.responseCh <- reply
-			//TODO: actual append
-			if success {
+
+				//Resend
+				raft.eventCh <- event
+
 				timer.Stop()
-				return
+				return //return as follower
+			} else {
+				//Not from a valid leader
+				reply := AppendRPCResults{raft.Term, false}
+				ev.responseCh <- reply
 			}
 
 		case VoteRequest:
@@ -374,9 +398,15 @@ func (raft *Raft) Candidate() {
 			raft.LogState("Time out received")
 			//Stand again as candidate
 			//Increment term and Request votes
-			raft.Term++
-			raft.VotedFor = -1
-			//TODO: Fix isolated server increments term problem
+			if votes > 1 {
+				//Some one else also voted other than me
+				raft.Term++
+				raft.VotedFor = -1
+			} else {
+				//Donot increment term as this will cause
+				//the server to increment terms while being
+				//isolated
+			}
 			return //Come back as candidate since state is not changed
 
 		case ErrorSimulation:
@@ -398,4 +428,10 @@ func (raft *Raft) LogState(msg string) {
 	}
 
 	log.Print("S", raft.ServerID, " ", raft.State, " (T", raft.Term, ")", " (L", raft.LeaderID, ")", ": ", msg)
+}
+
+func checkError(e error) {
+	if e != nil {
+		log.Println(e.Error())
+	}
 }

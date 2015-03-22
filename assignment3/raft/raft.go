@@ -15,6 +15,8 @@ type ErrRedirect int // Implements Error interface.
 
 // var raft Raft       //Raft object
 
+const FILENAME = "saved"
+
 type LogEntry interface {
 	Lsn() Lsn
 	Data() Command
@@ -112,7 +114,7 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 		}
 	}
 
-	raft.Log = append(raft.Log, LogItem{}) //Dummy item
+	raft.Log = append(raft.Log, LogItem{}) //Dummy item to make log start from index 1
 
 	//Log indices
 	raft.LastLsn = 0
@@ -124,14 +126,20 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 	raft.Term = 0
 	raft.VotedFor = -1
 
+	//Restore state if state file exists
+	if raft.FileExist(FILENAME) {
+		//Server crashed last time
+		raft.ReadStateFromFile(FILENAME)
+	}
+
 	//Other server states
 	raft.NextIndex = make([]Lsn, nServers, nServers)
 	raft.MatchIndex = make([]Lsn, nServers, nServers)
 
-	raft.kvChan = commitCh //Store commit channel to KV-Store
-	raft.eventCh = make(chan interface{}, nServers)
+	raft.kvChan = commitCh                          //Store commit channel to KV-Store
+	raft.eventCh = make(chan interface{}, nServers) //Event channel for state loop
 
-	go raft.loop()
+	go raft.loop() //Raft state loop
 
 	if raftMap == nil {
 		raftMap = make(map[int]*Raft)
