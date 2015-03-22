@@ -18,7 +18,7 @@ const SERVER_NAME = "kvstore" //Must be inside GOPATH
 
 var proc []*exec.Cmd
 
-func TestRaft(t *testing.T) {
+func _TestRaft(t *testing.T) {
 
 	go main() //Starts all servers
 
@@ -37,15 +37,15 @@ func TestRaft(t *testing.T) {
 		// raft.MakeServerAvailable(leaderId)
 	})
 
-	time.AfterFunc(5*time.Second, func() {
-		raft.ResurrectServerAsLeader(leaderId1)
-		log.Print("Resurrected previous leader:", leaderId1)
-		// raft.MakeServerAvailable(leaderId)
-	})
-
 	time.AfterFunc(3*time.Second, func() {
 		raft.ResurrectServer(leaderId2)
 		log.Print("Resurrected previous leader:", leaderId2)
+		// raft.MakeServerAvailable(leaderId)
+	})
+
+	time.AfterFunc(5*time.Second, func() {
+		raft.ResurrectServerAsLeader(leaderId1)
+		log.Print("Resurrected previous leader:", leaderId1)
 		// raft.MakeServerAvailable(leaderId)
 	})
 
