@@ -8,33 +8,6 @@ import (
 	"os"
 )
 
-func (raft *Raft) CommandToBytes(cmd Command) []byte {
-
-	w := bytes.Buffer{}
-	enc := gob.NewEncoder(&w)
-
-	err := enc.Encode(cmd)
-	if err != nil {
-		log.Println(err)
-	}
-	return w.Bytes()
-}
-
-func (raft *Raft) BytesToCommand(b []byte) Command {
-
-	r := bytes.Buffer{}
-	r.Write(b)
-
-	dec := gob.NewDecoder(&r)
-
-	cmd := Command{}
-	err := dec.Decode(&cmd)
-	if err != nil {
-		log.Println(err)
-	}
-	return cmd
-}
-
 func (raft *Raft) StateToBytes() []byte {
 
 	//Initialize encoder
@@ -173,4 +146,31 @@ func (raft *Raft) ReadStateFromFile(filePath string) error {
 	log.Println("Restored state: Term:", Term, "Voted for:", VotedFor /*, "Log:", Log*/)
 
 	return nil
+}
+
+func (raft *Raft) CommandToBytes(cmd Command) []byte {
+
+	w := bytes.Buffer{}
+	enc := gob.NewEncoder(&w)
+
+	err := enc.Encode(cmd)
+	if err != nil {
+		log.Println(err)
+	}
+	return w.Bytes()
+}
+
+func (raft *Raft) BytesToCommand(b []byte) Command {
+
+	r := bytes.Buffer{}
+	r.Write(b)
+
+	dec := gob.NewDecoder(&r)
+
+	cmd := Command{}
+	err := dec.Decode(&cmd)
+	if err != nil {
+		log.Println(err)
+	}
+	return cmd
 }

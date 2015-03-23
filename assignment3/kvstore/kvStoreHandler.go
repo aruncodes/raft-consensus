@@ -28,6 +28,8 @@ func kvStoreHandler(commitCh chan raft.LogEntry, kvResponse chan KVResponse) {
 		case "expire":
 			response = expiryHandler(command, kvstore)
 			continue //No one is waiting for response
+		default:
+			continue
 		}
 
 		if logEntry.Committed() {

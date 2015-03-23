@@ -7,18 +7,27 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/exec"
-	"strconv"
+	// "os/exec"
+	// "strconv"
 	"testing"
 	"time"
 )
 
-const NUM_SERVERS = 5
-const SERVER_NAME = "kvstore" //Must be inside GOPATH
+// const NUM_SERVERS = 5
+// const SERVER_NAME = "kvstore" //Must be inside GOPATH
+// var proc []*exec.Cmd
 
-var proc []*exec.Cmd
+//Test procedure:
+//	Kill one leader, check if new leader gets elected
+//	Kill another, check the same
+//	Resurrect previous as follower, check if it sinks in
+//  Resurrect first one as leader, check if it sinks in
+func TestRaft1(t *testing.T) {
 
-func TestRaft(t *testing.T) {
+	//Remove any state recovery files
+	for i := 0; i < 5; i++ {
+		os.Remove(fmt.Sprintf("%s_S%d.state", raft.FILENAME, i))
+	}
 
 	go main() //Starts all servers
 
@@ -26,34 +35,152 @@ func TestRaft(t *testing.T) {
 	ack := make(chan bool)
 
 	time.AfterFunc(1*time.Second, func() {
-		leaderId1 = raft.KillLeader()
+		checkIfLeaderExist(t)
+		leaderId1 = raft.KillLeader() //Kill leader
 		log.Print("Killed leader:", leaderId1)
-		// raft.MakeServerUnavailable(2)
 	})
 
 	time.AfterFunc(2*time.Second, func() {
-		leaderId2 = raft.KillLeader()
+		checkIfLeaderExist(t)
+		leaderId2 = raft.KillLeader() //Kill current leader again
 		log.Print("Killed leader:", leaderId2)
-		// raft.MakeServerAvailable(leaderId)
 	})
 
 	time.AfterFunc(3*time.Second, func() {
-		raft.ResurrectServer(leaderId2)
+		checkIfLeaderExist(t)
+		raft.ResurrectServer(leaderId2) //Resurrect last killed as follower
 		log.Print("Resurrected previous leader:", leaderId2)
-		// raft.MakeServerAvailable(leaderId)
+	})
+
+	time.AfterFunc(4*time.Second, func() {
+		checkIfLeaderExist(t)
+		raft.ResurrectServerAsLeader(leaderId1) //Ressurect first one as leader
+		log.Print("Resurrected previous leader:", leaderId1)
 	})
 
 	time.AfterFunc(5*time.Second, func() {
-		raft.ResurrectServerAsLeader(leaderId1)
-		log.Print("Resurrected previous leader:", leaderId1)
-		// raft.MakeServerAvailable(leaderId)
+		checkIfLeaderExist(t)
+		ack <- true
 	})
-
-	time.AfterFunc(10*time.Second, func() { ack <- true })
 
 	<-ack
 }
 
+//Kill 3 servers and make sure no leader gets elected
+func TestRaft2(t *testing.T) {
+	ack := make(chan bool)
+
+	leader := raft.GetLeaderId()
+
+	//Kill some one who is not a leader
+	s1 := (leader + 1) % 5
+	raft.KillServer(s1)
+	t.Log("Killed ", s1)
+
+	//Once more
+	s2 := (s1 + 1) % 5
+	raft.KillServer(s2)
+	t.Log("Killed ", s2)
+
+	//Kill leader now
+	leader = raft.KillLeader()
+
+	//Make sure new leader doesn't get elected
+	time.AfterFunc(1*time.Second, func() {
+		leaderId := raft.GetLeaderId()
+		if leaderId != -1 {
+			t.Error("Leader should not get elected!")
+		}
+		ack <- true
+	})
+	<-ack
+
+	//Resurrect for next test cases
+	raft.ResurrectServer(leader)
+	raft.ResurrectServer(s1)
+	raft.ResurrectServer(s2)
+
+	//Wait for 1 second for new leader to get elected
+	time.AfterFunc(1*time.Second, func() { ack <- true })
+	<-ack
+}
+
+func checkIfLeaderExist(t *testing.T) bool {
+	if raft.GetLeaderId() == -1 {
+		t.Error("New leader not elected in time!")
+		return false
+	}
+	t.Log("Leader election successful")
+	return true
+}
+
+//Test if log after append is same accross all servers
+//Check everyones log with leader's
+func TestLogReplication1(t *testing.T) {
+
+	ack := make(chan bool)
+
+	//Get leader
+	leaderId := raft.GetLeaderId()
+
+	//Append a log entry to leader as client
+	raft.InsertFakeLogEntry(leaderId)
+
+	leaderLog := raft.GetLogAsString(leaderId)
+	// log.Println(leaderLog)
+
+	time.AfterFunc(1*time.Second, func() { ack <- true })
+	<-ack //Wait for 1 second for log replication to happen
+
+	//Get logs of all others and compare with each
+	for i := 0; i < 5; i++ {
+		checkIfExpected(t, raft.GetLogAsString(i), leaderLog)
+	}
+
+}
+
+//After crashing and recovering,
+//test if log is replicated after some time.
+//
+//Procedure: Kill a server, insert a log entry,
+//resurrect after some time, see if log match with leader now
+func TestLogReplication2(t *testing.T) {
+	ack := make(chan bool)
+
+	//Kill one server
+	raft.KillServer(1)
+
+	//Append log to server
+	time.AfterFunc(1*time.Second, func() {
+		//Get leader
+		leaderId := raft.GetLeaderId()
+
+		//Append a log entry to leader as client
+		raft.InsertFakeLogEntry(leaderId)
+	})
+
+	//Resurrect old server after enough time for other to move on
+	time.AfterFunc(2*time.Second, func() {
+		//Resurrect old server
+		raft.ResurrectServer(1)
+	})
+
+	//Check log after some time to see if it matches with current leader
+	time.AfterFunc(3*time.Second, func() {
+		leaderId := raft.GetLeaderId()
+		leaderLog := raft.GetLogAsString(leaderId)
+		serverLog := raft.GetLogAsString(1)
+
+		checkIfExpected(t, serverLog, leaderLog)
+
+		ack <- true
+	})
+
+	<-ack
+
+}
+
+/*
 func _TestCluster(t *testing.T) {
 	proc = make([]*exec.Cmd, NUM_SERVERS)
 
@@ -132,7 +259,7 @@ func killAllServers() {
 		killServer(i)
 	}
 }
-
+*/
 func TCPWrite(t *testing.T, conn net.Conn, buf string) {
 	_, err := conn.Write([]byte(buf + "\r\n"))
 	if err != nil {

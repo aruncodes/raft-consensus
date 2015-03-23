@@ -17,6 +17,40 @@ type RequestVoteResult struct {
 	VoteGranted bool
 }
 
+func (raft *Raft) shouldIVote(args RequestVoteArgs) bool {
+
+	candidateTerm := args.Term
+	shouldVote := false
+
+	if raft.Term < candidateTerm {
+		//Candidate in higher term
+		if args.LastLogIndex > raft.LastLsn {
+			//Candidates log is more complete
+			shouldVote = true
+		} else if args.LastLogIndex == raft.LastLsn &&
+			args.LastLogTerm >= raft.Log[raft.LastLsn].Term {
+			//Candidates log is atleast up to date as me
+			shouldVote = true
+		} else {
+			//Log not upto date
+			shouldVote = false
+		}
+	} else if raft.Term == candidateTerm {
+		//We are in same term
+		if (raft.VotedFor == -1) || (raft.VotedFor == int(args.CandidateID)) {
+			//Not voted in this term or already voted for this server
+			shouldVote = true
+		} else {
+			//Already voted
+			shouldVote = false
+		}
+	} else {
+		//Lesser term
+		shouldVote = false
+	}
+	return shouldVote
+}
+
 func (raft *Raft) requestVote(server ServerConfig, args RequestVoteArgs, reply *RequestVoteResult) error {
 	//Should actually do RPC
 	//Here, it communicates using channels of remote raft server

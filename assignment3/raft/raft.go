@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"log"
-	"os"
+	// "os"
 	"strconv"
 	"sync"
 )
@@ -130,6 +130,17 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 	if raft.FileExist(FILENAME) {
 		//Server crashed last time
 		raft.ReadStateFromFile(FILENAME)
+
+		//Add changes to state machine
+		for i := 1; i < len(raft.Log); i++ {
+			if raft.Log[i].Committed() {
+				//Add if already commited
+				raft.kvChan <- raft.Log[i]
+
+				raft.LastApplied = uint64(i)
+				raft.CommitIndex = uint64(i)
+			}
+		}
 	}
 
 	//Other server states
@@ -151,8 +162,9 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 }
 
 func ReadConfig() error {
-	//Get config.json file from $GOPATH/src/assignment3/
-	filePath := os.Getenv("GOPATH") + "/src/assignment3/config.json"
+	//Get config.json file current working dir
+	// filePath := os.Getenv("GOPATH") + "/src/assignment3/config.json"
+	filePath := "config.json"
 	file, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return errors.New("Couldn't open config file from :" + filePath)

@@ -131,47 +131,19 @@ func (raft *Raft) Follower() {
 
 			ev := event.(VoteRequest)
 
-			candidateTerm := ev.args.Term
-			voted := false
-
-			if raft.Term < candidateTerm {
-				//Candidate in higher term
-				if ev.args.LastLogIndex >= raft.LastLsn &&
-					ev.args.LastLogTerm >= raft.Log[raft.LastLsn].Term {
-					//Candidates log is atleast up to date as me
-
-					raft.Term = candidateTerm
-					raft.VotedFor = int(ev.args.CandidateID)
-					voted = true
-					raft.LogState("Voted ")
-				} else {
-					//Log not upto date
-					voted = false
-					raft.LogState("Vote request rejected")
-				}
-
-			} else if raft.Term == candidateTerm {
-
-				if (raft.VotedFor == -1) || (raft.VotedFor == int(ev.args.CandidateID)) {
-					//Not voted in this term or already voted for this server
-					raft.VotedFor = int(ev.args.CandidateID)
-					voted = true
-					raft.LogState("Voted ")
-				} else {
-					//Already voted
-					voted = false
-					raft.LogState("Vote request rejected")
-				}
-			} else {
-				//Lesser term
-				voted = false
-				raft.LogState("Vote request rejected")
-			}
+			voted := raft.shouldIVote(ev.args)
 
 			if voted {
+				raft.Term = ev.args.Term
+				raft.VotedFor = int(ev.args.CandidateID)
+				raft.LogState("Voted ")
+
 				//Disk write
 				err := raft.WriteStateToFile(FILENAME)
 				checkError(err)
+
+			} else {
+				raft.LogState("Vote request rejected")
 			}
 
 			ev.responseCh <- RequestVoteResult{raft.Term, voted} //Actual vote
@@ -253,20 +225,28 @@ func (raft *Raft) Leader() {
 			//Some one became a candidate, network problem?
 			ev := event.(VoteRequest)
 
-			if ev.args.Term > raft.Term {
-				//Am I mistakenly thought I am leader?
+			voted := raft.shouldIVote(ev.args)
 
+			if voted {
+				//Am I mistakenly thought I am leader?
 				raft.State = Follower
 				raft.Term = ev.args.Term
-				raft.VotedFor = -1
+				raft.VotedFor = int(ev.args.CandidateID)
+				raft.LogState("Voted ")
 
-				ev.responseCh <- RequestVoteResult{raft.Term, true}
-				raft.LogState("Voted")
+				//Disk write
+				err := raft.WriteStateToFile(FILENAME)
+				checkError(err)
 
-				return // since state changed
 			} else {
-				ev.responseCh <- RequestVoteResult{raft.Term, false}
 				raft.LogState("Vote request rejected")
+			}
+
+			ev.responseCh <- RequestVoteResult{raft.Term, voted} //Actual vote
+
+			if voted {
+				timer.Stop()
+				return // Since state changed
 			}
 
 		case Timeout:
@@ -274,12 +254,6 @@ func (raft *Raft) Leader() {
 			//Send append RPCs
 			raft.heartBeat()
 			timer.Reset(heartbeatTimeout)
-
-			//Debug code
-			// if raft.ServerID == 1 {
-			// 	serverState[raft.ServerID] = KILLED
-			// 	raft.State = Killed
-			// }
 
 			if raft.State == Leader {
 				continue //Wait for next event/timeout
@@ -436,7 +410,7 @@ func (raft *Raft) Candidate() {
 func (raft *Raft) LogState(msg string) {
 
 	if raft.State == Leader {
-		//A line to distinguish rounds of new leaders
+		//A line to distinguish rounds of new leaders in log
 		log.Print("\r---------------------------------")
 	}
 

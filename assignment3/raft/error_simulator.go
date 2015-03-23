@@ -2,6 +2,7 @@ package raft
 
 import (
 	"errors"
+	"fmt"
 )
 
 var appendRPCState int
@@ -46,6 +47,45 @@ func KillLeader() int {
 		}
 	}
 	return -1
+}
+
+func GetLeaderId() int {
+
+	//Find leader
+	for _, serverRaft := range raftMap {
+		if serverRaft.State == Leader {
+			return serverRaft.ServerID
+		}
+	}
+	return -1
+}
+
+func GetLogAsString(serverId int) string {
+	var retStr string
+
+	if serverId == -1 {
+		return "none"
+	}
+
+	logArray := raftMap[serverId].Log
+
+	for index, logItem := range logArray {
+		retStr += fmt.Sprintf("%d %d ", index, logItem.Term)
+	}
+
+	return retStr
+}
+
+func InsertFakeLogEntry(serverId int) {
+
+	if serverId == -1 {
+		return
+	}
+	raftObj := raftMap[serverId]
+
+	respCh := make(chan LogEntry)
+	raftObj.eventCh <- ClientAppend{Command{}, respCh}
+	<-respCh
 }
 
 //Old methods, not used as of now
