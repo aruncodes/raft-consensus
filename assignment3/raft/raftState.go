@@ -180,7 +180,7 @@ func (raft *Raft) Leader() {
 	timer := time.AfterFunc(0, timeoutFunc) //For first time,start immediately
 
 	//Update raft state of followers known to leader
-	for i, _ := range nServers {
+	for i, _ := range raft.NextIndex {
 		raft.NextIndex[i] = raft.LastLsn + 1
 		raft.MatchIndex[i] = 0
 	}
