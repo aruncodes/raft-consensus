@@ -160,6 +160,7 @@ func (raft *Raft) Follower() {
 		case ErrorSimulation:
 			ev := event.(ErrorSimulation)
 			raft.State = ev.State
+			timer.Stop()
 			return
 
 		default:
@@ -179,7 +180,7 @@ func (raft *Raft) Leader() {
 	timer := time.AfterFunc(0, timeoutFunc) //For first time,start immediately
 
 	//Update raft state of followers known to leader
-	for i, _ := range raft.NextIndex {
+	for i, _ := range nServers {
 		raft.NextIndex[i] = raft.LastLsn + 1
 		raft.MatchIndex[i] = 0
 	}
@@ -214,6 +215,8 @@ func (raft *Raft) Leader() {
 				raft.VotedFor = -1
 
 				ev.responseCh <- AppendRPCResults{raft.Term, true}
+
+				timer.Stop()
 				return // return as follower
 			} else {
 				//We are actually the leader
@@ -265,6 +268,7 @@ func (raft *Raft) Leader() {
 		case ErrorSimulation:
 			ev := event.(ErrorSimulation)
 			raft.State = ev.State
+			timer.Stop()
 			return
 
 		default:
@@ -399,6 +403,7 @@ func (raft *Raft) Candidate() {
 		case ErrorSimulation:
 			ev := event.(ErrorSimulation)
 			raft.State = ev.State
+			timer.Stop()
 			return
 
 		default:
