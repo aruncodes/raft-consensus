@@ -13,7 +13,7 @@ import (
 type Lsn uint64      //Log sequence number, unique for all time.
 type ErrRedirect int // Implements Error interface.
 
-// var raft Raft       //Raft object
+var raft Raft //Raft object
 
 const FILENAME = "saved"
 
@@ -103,7 +103,7 @@ type Raft struct {
 // entries are recovered and replayed
 func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*Raft, error) {
 
-	raft := Raft{} // empty raft object
+	raft = Raft{} // empty raft object
 	for _, server := range config.Servers {
 
 		if server.Id == thisServerId { //Config for this server
@@ -152,10 +152,12 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 
 	go raft.loop() //Raft state loop
 
-	if raftMap == nil {
-		raftMap = make(map[int]*Raft)
-	}
-	raftMap[thisServerId] = &raft
+	go raft.RPCListener() //Start RPC Listener
+
+	// if raftMap == nil {
+	// 	raftMap = make(map[int]*Raft)
+	// }
+	// raftMap[thisServerId] = &raft
 
 	log.Print("Raft init, Server id:" + strconv.Itoa(raft.ServerID))
 	return &raft, nil

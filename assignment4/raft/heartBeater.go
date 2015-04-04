@@ -25,13 +25,17 @@ func (raft *Raft) heartBeat() {
 		}
 
 		prevLogIndex := raft.NextIndex[server.Id] - 1
-		prevLogTerm := raft.Log[prevLogIndex].Term
+		prevLogTerm := 0
+		if raft.Log[prevLogIndex] != nil {
+			prevLogTerm = raft.Log[prevLogIndex].Term
+		}
 
 		args := AppendRPCArgs{raft.Term, raft.LeaderID,
 			prevLogIndex, prevLogTerm, logSlice, uint64(raft.CommitIndex)} //Send slice with new entires
 
-		var reply AppendRPCResults                  //reply from RPC
-		err := raft.appendRPC(server, args, &reply) //Make RPC
+		var reply AppendRPCResults //reply from RPC
+		// err := raft.appendRPC(server, args, &reply) //Make RPC
+		err := raft.appendEntiresRPC(server, args, &reply) //Make RPC
 
 		if err != nil {
 			log.Print(err.Error())

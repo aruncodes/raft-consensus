@@ -14,8 +14,8 @@ const (
 )
 
 const (
-	followerTimeout  = /*3 * time.Second //*/ 500 * time.Millisecond
-	heartbeatTimeout = /*2 * time.Second //*/ 250 * time.Millisecond
+	followerTimeout  = /*3 * time.Second // */ 1000 * time.Millisecond
+	heartbeatTimeout = /*2 * time.Second // */ 750 * time.Millisecond
 )
 
 type ClientAppend struct {
@@ -301,8 +301,9 @@ func (raft *Raft) Candidate() {
 		args := RequestVoteArgs{raft.Term, uint64(raft.ServerID), raft.LastLsn, lastLogTerm}
 		reply := RequestVoteResult{}
 
-		//Request vote by RPC (fake)
-		err := raft.requestVote(server, args, &reply)
+		//Request vote by RPC
+		// err := raft.requestVote(server, args, &reply) //fake
+		err := raft.voteRequestRPC(server, args, &reply) //
 
 		if err != nil {
 			log.Println(err.Error())
@@ -329,8 +330,9 @@ func (raft *Raft) Candidate() {
 		raft.eventCh <- Timeout{}
 	}
 
-	r := time.Duration(rand.Intn(100)) * time.Millisecond
-	timer := time.AfterFunc(followerTimeout+r, timeoutFunc) //debug: 3 seconds + some millis
+	timeoutDelta := int(0.2 * float32(followerTimeout)) //20% of follower timeout
+	randDelta := time.Duration(rand.Intn(timeoutDelta))
+	timer := time.AfterFunc(followerTimeout+randDelta, timeoutFunc)
 
 	for {
 
@@ -378,12 +380,32 @@ func (raft *Raft) Candidate() {
 			}
 
 		case VoteRequest:
-			//Do not vote as i am a candidate
+			//Vote if eligible
 			ev := event.(VoteRequest)
 
-			reply := RequestVoteResult{raft.Term, false}
-			raft.LogState("Vote request rejected")
-			ev.responseCh <- reply
+			voted := raft.shouldIVote(ev.args)
+
+			if voted {
+				raft.Term = ev.args.Term
+				raft.VotedFor = int(ev.args.CandidateID)
+				raft.LogState("Voted ")
+
+				//Disk write
+				err := raft.WriteStateToFile(FILENAME)
+				checkError(err)
+
+			} else {
+				raft.LogState("Vote request rejected")
+			}
+
+			ev.responseCh <- RequestVoteResult{raft.Term, voted} //Actual vote
+
+			if voted {
+				//Go back to follower state
+				raft.State = Follower
+				timer.Stop()
+				return
+			}
 
 		case Timeout:
 			raft.LogState("Time out received")

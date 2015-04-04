@@ -1,7 +1,7 @@
 package main
 
 import (
-	"assignment3/raft"
+	"assignment4/raft"
 	"fmt"
 	"log"
 	"math/rand"

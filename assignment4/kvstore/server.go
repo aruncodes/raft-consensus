@@ -1,11 +1,11 @@
 package main
 
 import (
-	"assignment3/raft"
+	"assignment4/raft"
 	"io/ioutil"
 	"log"
 	"net"
-	// "os"
+	"os"
 	"strconv"
 )
 
@@ -45,30 +45,29 @@ func main() {
 	if !LOG_MESSAGES { //Disable debuging
 		log.SetOutput(ioutil.Discard)
 	}
-	/*
-		//Server should get server id as an argument
-		if len(os.Args) < 2 {
-			log.Print(os.Args[0] + " <server id>")
-			return
-		}
 
-		//Parse server id
-		serverID, err := strconv.ParseInt(os.Args[1], 10, 32)
-		if err != nil {
-			log.Print("Server ID not valid")
-			return
-		}
-	*/
+	//Server should get server id as an argument
+	if len(os.Args) < 2 {
+		log.Print(os.Args[0] + " <server id>")
+		return
+	}
+
+	//Parse server id
+	serverID, err := strconv.ParseInt(os.Args[1], 10, 32)
+	if err != nil {
+		log.Print("Server ID not valid")
+		return
+	}
 
 	//Read server config and populate ClusterInfo
-	err := raft.ReadConfig()
+	err = raft.ReadConfig()
 
 	if err != nil {
 		log.Print(err.Error())
 		return
 	}
 
-	for i := 0; i <= 4; i++ { //Create 5 go routines representing 5 raft servers
+	/*for i := 0; i <= 4; i++ { //Create 5 go routines representing 5 raft servers
 
 		//Start server
 		if i == 4 {
@@ -76,7 +75,8 @@ func main() {
 		} else {
 			go startServer(i)
 		}
-	}
+	}*/
+	startServer(int(serverID))
 }
 
 func startServer(serverID int) {
