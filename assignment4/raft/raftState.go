@@ -285,32 +285,27 @@ func (raft *Raft) Candidate() {
 
 	raft.LogState("")
 
+	//Ack channel from go routine per server
+	ackChannel := make(chan bool, nServers)
+
 	//Send vote request to all
 	votes := 0
 	for _, server := range ClusterInfo.Servers {
 
 		if raft.ServerID == server.Id {
 			// The current running server
-			votes++ // self vote
 			raft.VotedFor = raft.ServerID
+			ackChannel <- true // self vote
 			continue
 		}
 
-		//Create args and reply
-		lastLogTerm := raft.Log[raft.LastLsn].Term
-		args := RequestVoteArgs{raft.Term, uint64(raft.ServerID), raft.LastLsn, lastLogTerm}
-		reply := RequestVoteResult{}
+		//Send everything one by one without waiting for one to finish
+		go raft.sendVoteRequest(server, ackChannel)
+	}
 
-		//Request vote by RPC
-		// err := raft.requestVote(server, args, &reply) //fake
-		err := raft.voteRequestRPC(server, args, &reply) //
-
-		if err != nil {
-			log.Println(err.Error())
-			continue
-		}
-
-		if reply.VoteGranted == true {
+	//Wait for acks from each go routine
+	for _, _ = range ClusterInfo.Servers {
+		if <-ackChannel {
 			votes++
 		}
 	}

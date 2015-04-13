@@ -51,6 +51,28 @@ func (raft *Raft) shouldIVote(args RequestVoteArgs) bool {
 	return shouldVote
 }
 
+//Per server vote request
+func (raft *Raft) sendVoteRequest(server ServerConfig, ackChannel chan bool) {
+	//Create args and reply
+	lastLogTerm := raft.Log[raft.LastLsn].Term
+	args := RequestVoteArgs{raft.Term, uint64(raft.ServerID), raft.LastLsn, lastLogTerm}
+	reply := RequestVoteResult{}
+
+	//Request vote by RPC
+	// err := raft.requestVote(server, args, &reply) //fake
+	err := raft.voteRequestRPC(server, args, &reply) //
+
+	if err != nil {
+		log.Println(err.Error())
+		ackChannel <- false
+		return
+	}
+
+	//Send ack
+	ackChannel <- reply.VoteGranted
+}
+
+//Fake, not used anymore
 func (raft *Raft) requestVote(server ServerConfig, args RequestVoteArgs, reply *RequestVoteResult) error {
 	//Should actually do RPC
 	//Here, it communicates using channels of remote raft server

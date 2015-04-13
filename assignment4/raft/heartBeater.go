@@ -4,7 +4,65 @@ import (
 	"log"
 )
 
+func (raft *Raft) sendHeartBeat(server ServerConfig, ackChannel chan bool) {
+	//Create args to call RPC
+	var logSlice []LogItem
+
+	if raft.LastLsn >= raft.NextIndex[server.Id] {
+		//Followers log needs to be filled up
+		nextIndex := raft.NextIndex[server.Id]
+		logSlice = raft.Log[nextIndex:]
+	}
+
+	prevLogIndex := raft.NextIndex[server.Id] - 1
+	// prevLogTerm := raft.Log[prevLogIndex].Term
+	prevLogTerm := uint64(0)
+	if len(raft.Log) < int(prevLogIndex) && prevLogIndex > 0 {
+		prevLogTerm = raft.Log[prevLogIndex].Term
+	}
+
+	args := AppendRPCArgs{raft.Term, raft.LeaderID,
+		prevLogIndex, prevLogTerm, logSlice, uint64(raft.CommitIndex)} //Send slice with new entires
+
+	var reply AppendRPCResults //reply from RPC
+	// err := raft.appendRPC(server, args, &reply) //Make RPC
+	err := raft.appendEntiresRPC(server, args, &reply) //Make RPC
+
+	if err != nil {
+		log.Print(err.Error())
+
+		ackChannel <- false //Ack for heartBeat()
+		return
+	}
+
+	if reply.Term > raft.Term {
+		//There is new leader with a higher term
+		//Revert to follower
+		raft.State = Follower
+		raft.Term = reply.Term
+		raft.VotedFor = -1
+
+		ackChannel <- false //Ack for heartBeat()
+		return
+	}
+
+	if reply.Success {
+		//Update nextIndex and matchIndex
+		raft.NextIndex[server.Id] = raft.LastLsn + 1
+		raft.MatchIndex[server.Id] = raft.LastLsn + 1
+	} else {
+		//Log inconsistency
+		//Decrement nextIndex and retry
+		raft.NextIndex[server.Id]--
+	}
+
+	//Send ack to heartBeat()
+	ackChannel <- true
+}
+
 func (raft *Raft) heartBeat() {
+
+	ackChannel := make(chan bool, nServers)
 
 	//Send appendRPC to all server
 	//starting from startLogIndex
@@ -12,55 +70,17 @@ func (raft *Raft) heartBeat() {
 
 		if raft.ServerID == server.Id {
 			// The current running server
+			ackChannel <- true
 			continue
 		}
 
-		//Create args to call RPC
-		var logSlice []LogItem
+		//Send heart beats to other servers simultaneously
+		go raft.sendHeartBeat(server, ackChannel)
+	}
 
-		if raft.LastLsn >= raft.NextIndex[server.Id] {
-			//Followers log needs to be filled up
-			nextIndex := raft.NextIndex[server.Id]
-			logSlice = raft.Log[nextIndex:]
-		}
-
-		prevLogIndex := raft.NextIndex[server.Id] - 1
-		prevLogTerm := 0
-		if raft.Log[prevLogIndex] != nil {
-			prevLogTerm = raft.Log[prevLogIndex].Term
-		}
-
-		args := AppendRPCArgs{raft.Term, raft.LeaderID,
-			prevLogIndex, prevLogTerm, logSlice, uint64(raft.CommitIndex)} //Send slice with new entires
-
-		var reply AppendRPCResults //reply from RPC
-		// err := raft.appendRPC(server, args, &reply) //Make RPC
-		err := raft.appendEntiresRPC(server, args, &reply) //Make RPC
-
-		if err != nil {
-			log.Print(err.Error())
-			continue
-		}
-
-		if reply.Term > raft.Term {
-			//There is new leader with a higher term
-			//Revert to follower
-			raft.State = Follower
-			raft.Term = reply.Term
-			raft.VotedFor = -1
-			break
-		}
-
-		if reply.Success {
-			//Update nextIndex and matchIndex
-			raft.NextIndex[server.Id] = raft.LastLsn + 1
-			raft.MatchIndex[server.Id] = raft.LastLsn + 1
-		} else {
-			//Log inconsistency
-			//Decrement nextIndex and retry
-			raft.NextIndex[server.Id]--
-		}
-
+	//Wait for all (this will not block because there are timers in all RPC code)
+	for _, _ = range ClusterInfo.Servers {
+		<-ackChannel
 	}
 
 	//If majority of servers are with matching log , commit till that point
