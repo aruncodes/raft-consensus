@@ -57,25 +57,34 @@ func (raft *Raft) appendEntries(args AppendRPCArgs) bool {
 		//Update Leader ID
 		raft.LeaderID = args.LeaderId
 
-		if raft.Log[args.PrevLogIndex].Term != args.PrevLogTerm {
-			//Log doesnt contain an entry at PrevLogIndex whose term matches
-			// prevLogTerm
+		if len(args.Log) > 0 {
+			//It is an appendEnties, not a heartBeat
 
-			//Remove that entry and everything after it
-			raft.Log = raft.Log[:args.PrevLogIndex]
+			if int(args.PrevLogIndex) >= len(raft.Log) {
+				//I dont have an entry at that index
+				return false
+			}
 
-			return false
+			if raft.Log[args.PrevLogIndex].Term != args.PrevLogTerm {
+				//Log doesnt contain an entry at PrevLogIndex whose term matches
+				// prevLogTerm
+
+				//Remove that entry and everything after it
+				raft.Log = raft.Log[:args.PrevLogIndex]
+
+				return false
+			}
+
+			//If everything is alright, append the entries
+			raft.Lock.Lock()
+			raft.Log = append(raft.Log, args.Log...)
+			raft.Lock.Unlock()
 		}
-
-		//Else append the entries
-		raft.Lock.Lock()
-		raft.Log = append(raft.Log, args.Log...)
-		raft.Lock.Unlock()
 
 		if args.LeaderCommit > raft.CommitIndex {
 			//update commit index to min of leader commit and last entry added
 
-			lastIndex := raft.Log[len(raft.Log)-1].Lsn()
+			lastIndex := raft.LastLsn() //raft.Log[len(raft.Log)-1].Lsn()
 			min := uint64(lastIndex)
 			if min > args.LeaderCommit {
 				min = args.LeaderCommit
@@ -86,7 +95,7 @@ func (raft *Raft) appendEntries(args AppendRPCArgs) bool {
 
 		//Apply to state machine if commitIndex > lastApplied
 		if raft.CommitIndex > raft.LastApplied {
-			for i, _ := range raft.Log[raft.LastApplied+1 : raft.CommitIndex+1] {
+			for i := raft.LastApplied + 1; i <= raft.CommitIndex; i++ {
 				//Apply from last applied to current commit index
 				raft.Log[i].COMMITTED = true
 				raft.kvChan <- raft.Log[i]
@@ -99,12 +108,14 @@ func (raft *Raft) appendEntries(args AppendRPCArgs) bool {
 		return true
 	} else {
 		//I have another leader
+
 		return false
 	}
 
 }
 
-//RPC call to followers
+//Fake RPC call to followers
+//Not being used now.
 func (raft *Raft) appendRPC(server ServerConfig, args AppendRPCArgs, reply *AppendRPCResults) error {
 	//Should be actual RPC
 	//Actual code commented below with same function name

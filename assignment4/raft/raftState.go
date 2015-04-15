@@ -181,7 +181,7 @@ func (raft *Raft) Leader() {
 
 	//Update raft state of followers known to leader
 	for i, _ := range raft.NextIndex {
-		raft.NextIndex[i] = raft.LastLsn + 1
+		raft.NextIndex[i] = raft.LastLsn() + 1
 		raft.MatchIndex[i] = 0
 	}
 
@@ -196,9 +196,9 @@ func (raft *Raft) Leader() {
 
 			ev := event.(ClientAppend)
 
-			logItem := LogItem{raft.LastLsn + 1, ev.command, false, raft.Term}
+			logItem := LogItem{raft.LastLsn() + 1, ev.command, false, raft.Term}
 			raft.Log = append(raft.Log, logItem)
-			raft.LastLsn++
+			// raft.LastLsn++
 
 			ev.responseCh <- logItem
 

@@ -2,7 +2,7 @@ package raft
 
 import (
 	"errors"
-	// "log"
+	"log"
 )
 
 type RequestVoteArgs struct {
@@ -24,11 +24,11 @@ func (raft *Raft) shouldIVote(args RequestVoteArgs) bool {
 
 	if raft.Term < candidateTerm {
 		//Candidate in higher term
-		if args.LastLogIndex > raft.LastLsn {
+		if args.LastLogIndex > raft.LastLsn() {
 			//Candidates log is more complete
 			shouldVote = true
-		} else if args.LastLogIndex == raft.LastLsn &&
-			args.LastLogTerm >= raft.Log[raft.LastLsn].Term {
+		} else if args.LastLogIndex == raft.LastLsn() &&
+			args.LastLogTerm >= raft.Log[raft.LastLsn()].Term {
 			//Candidates log is atleast up to date as me
 			shouldVote = true
 		} else {
@@ -54,8 +54,8 @@ func (raft *Raft) shouldIVote(args RequestVoteArgs) bool {
 //Per server vote request
 func (raft *Raft) sendVoteRequest(server ServerConfig, ackChannel chan bool) {
 	//Create args and reply
-	lastLogTerm := raft.Log[raft.LastLsn].Term
-	args := RequestVoteArgs{raft.Term, uint64(raft.ServerID), raft.LastLsn, lastLogTerm}
+	lastLogTerm := raft.Log[raft.LastLsn()].Term
+	args := RequestVoteArgs{raft.Term, uint64(raft.ServerID), raft.LastLsn(), lastLogTerm}
 	reply := RequestVoteResult{}
 
 	//Request vote by RPC
@@ -72,7 +72,7 @@ func (raft *Raft) sendVoteRequest(server ServerConfig, ackChannel chan bool) {
 	ackChannel <- reply.VoteGranted
 }
 
-//Fake, not used anymore
+//Fake RPC, not used anymore
 func (raft *Raft) requestVote(server ServerConfig, args RequestVoteArgs, reply *RequestVoteResult) error {
 	//Should actually do RPC
 	//Here, it communicates using channels of remote raft server

@@ -84,7 +84,7 @@ func startServer(serverID int) {
 
 	commitCh := make(chan raft.LogEntry, 10) //Commit channel from raft to kvstore
 	kvResponse := make(chan KVResponse, 10)  //Response channel from kvstore to clientManger
-	clientMap := make(map[raft.Lsn]net.Conn) //Create client map,Saves all client connections with their Lsn
+	go kvStoreHandler(commitCh, kvResponse)  //Start kv store handler
 
 	//Create a new raft(s) and pass commit channel
 	raftObj, err := raft.NewRaft(&raft.ClusterInfo, serverID, commitCh)
@@ -103,7 +103,7 @@ func startServer(serverID int) {
 
 	defer conn.Close() //Close connection when function exits
 
-	go kvStoreHandler(commitCh, kvResponse)              //Start kv store handler
+	clientMap := make(map[raft.Lsn]net.Conn)             //Create client map,Saves all client connections with their Lsn
 	go clientConnManager(raftObj, clientMap, kvResponse) //Manage client connections
 
 	log.Print("Server started..")

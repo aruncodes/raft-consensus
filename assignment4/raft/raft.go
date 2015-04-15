@@ -88,7 +88,6 @@ type Raft struct {
 	eventCh             chan interface{}
 
 	//Raft specific
-	LastLsn                  Lsn
 	Log                      []LogItem
 	Term                     uint64
 	CommitIndex, LastApplied uint64
@@ -117,7 +116,6 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 	raft.Log = append(raft.Log, LogItem{}) //Dummy item to make log start from index 1
 
 	//Log indices
-	raft.LastLsn = 0
 	raft.CommitIndex = 0
 	raft.LastApplied = 0
 
@@ -125,6 +123,9 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 	raft.State = Follower
 	raft.Term = 0
 	raft.VotedFor = -1
+
+	raft.kvChan = commitCh                          //Store commit channel to KV-Store
+	raft.eventCh = make(chan interface{}, nServers) //Event channel for state loop
 
 	//Restore state if state file exists
 	if raft.FileExist(FILENAME) {
@@ -146,9 +147,6 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 	//Other server states
 	raft.NextIndex = make([]Lsn, nServers, nServers)
 	raft.MatchIndex = make([]Lsn, nServers, nServers)
-
-	raft.kvChan = commitCh                          //Store commit channel to KV-Store
-	raft.eventCh = make(chan interface{}, nServers) //Event channel for state loop
 
 	go raft.loop() //Raft state loop
 
@@ -182,6 +180,10 @@ func ReadConfig() error {
 	}
 
 	return nil
+}
+
+func (raft *Raft) LastLsn() Lsn {
+	return raft.Log[len(raft.Log)-1].Lsn()
 }
 
 // ErrRedirect as an Error object
