@@ -166,5 +166,7 @@ go test github.com/aruncodes/cs733/assignment2/kvstore
 This version is just an extension to the previously built memcached kvstore. Thus the basic underlying code for a client handler and a backend kvhandler is similar. As a result test cases for assignment 1 are not included in the testing functions of this version.
 
 Testing functionality is added for the newly built log replication module which will also eventually implement raft.  
+
 First test includes spawning a server which is not a leader. If a client tries to make contact to it a REDIRECT error message must be sent to the client.  
+
 Second test includes spawning 2 servers one of which is the leader. The client contacts the leader but the leader does not have any majority as of now. After some time we spawn a new follower server and now the leader gets a majority and the client request is passed through, processed, and results sent back.

@@ -4,8 +4,11 @@ A distributed implementation of Key Value store like memcached which is backed b
 
 ####Introduction
 You can use this distributed system if you want persistent data even if servers in the cluster crash. This system is tolerant to server crashes if atleast majority of servers are running. 
+
 RAFT ensures consensus across servers. If a client gets confirmation from the cluster, it will be available even if only majority of servers are alive. For any transaction to succeed, it should be approved by majority of servers. Eg: If there are 5 live servers, then at-least 3 should approve a transaction.  Once confirmed, the value stays synchronized in all servers. 
+
 There will always be a leader elected among the cluster. If the client needs to do any transaction, it must communicate with leader. If the server connected is not a leader, it will respond a REDIRECT message with leader id which can be used by the client to connect to leader. 
+
 There can be any number of servers as specified by the config.json file. The client ports, log ports, server id etc are specified in config file. Servers use RPCs to communicate with each other.
 
 
@@ -175,5 +178,7 @@ go install github.com/aruncodes/cs733/assignment4/tester
 The config file and server executable should be available in the current working directory when tester is being ran.
 ####Testing
 Test 1: Tests leader election. Current leader is killed and checked if another leader is being elected.
+
 Test 2: Tests log replication. A key is added to KV store by a leader, then that leader is killed. When a new leader is elected, it is read back.
+
 Test 3: Stress test. 20 items are added to KV Store. It is being read by different leaders.

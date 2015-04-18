@@ -4,8 +4,11 @@ A distributed implementation of Key Value store like memcached which is backed b
 
 ####Introduction
 RAFT ensures consensus across servers. If a client gets confirmation from the cluster, it will be available even if only majority of servers are alive. For any transaction to succeed, it should be approved by majority of servers. Eg: If there are 5 live servers, then at-least 3 should approve a transaction.  Once confirmed, the value stays synchronized in all servers. 
+
 There will always be a leader elected among the cluster. If the client needs to do any transaction, it must communicate with leader. If the server connected is not a leader, it will respond a REDIRECT message with leader id which can be used by the client to connect to leader. 
+
 There can be any number of servers as specified by the config.json file. The client ports, log ports, server id etc are specified in config file. Servers use go channels to communicate with each other.
+
 This version only have internal representaion of a server. It doesn't use RPCs. 
 
 ####How to install
