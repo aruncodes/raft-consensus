@@ -19,7 +19,7 @@ const (
 	LOG_TEST       = true
 	LOG_TEST_LABEL = true
 	LOG_MSG        = true
-	LOG_TCP_MSGS   = true
+	LOG_TCP_MSGS   = false
 	LOG_VERBOSE    = true
 )
 
@@ -161,8 +161,11 @@ func TestStress() {
 	//Wait for some time for log replication
 	time.Sleep(time.Second)
 
-	//Kill different server in 4 rounds
-	for round := 0; round < 4; round++ {
+	//Kill different server in successive rounds
+	total := 20
+	steps := 10
+	nSteps := total / steps
+	for round := 0; round < nSteps; round++ {
 
 		//Kill leader
 		LogVerbose("Kill leader (Server:", leaderId, ")")
@@ -188,8 +191,7 @@ func TestStress() {
 
 		//Get items
 		LogVerbose("Read items")
-		for i := round * 5; i < round*5+5; i++ {
-			//Add 20 items
+		for i := round * steps; i < round*steps+steps; i++ {
 			PrintTestLabel("GET Key ", i)
 			TCPWrite(conn, fmt.Sprintf("get key%d\r\n", i))
 			response := TCPRead(conn)
@@ -333,7 +335,8 @@ func checkIfExpected(actual string, expected string) bool {
 func checkIfExpected2(actual string, expected1 string, expected2 string) bool {
 	result := false
 	if actual != expected1 || actual != expected2 {
-		PrintTest(fmt.Sprintf("FAIL : Expected '%s' or '%s' but got '%s'\n", expected1, expected2, actual))
+		PrintTest(fmt.Sprintf("FAIL : Expected '%s' or '%s' but got '%s'\n",
+			expected1, expected2, actual))
 		ERROR_HAPPENED = true
 	} else {
 		PrintTest("PASS")
