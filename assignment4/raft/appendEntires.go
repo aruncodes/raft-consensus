@@ -1,12 +1,6 @@
 package raft
 
-import (
-	"errors"
-	// "log"
-	// "net"
-	// "net/rpc"
-	// "strconv"
-)
+import ()
 
 type AppendRPCArgs struct {
 	Term         uint64
@@ -97,7 +91,10 @@ func (raft *Raft) appendEntries(args AppendRPCArgs) bool {
 		if raft.CommitIndex > raft.LastApplied {
 			for i := raft.LastApplied + 1; i <= raft.CommitIndex; i++ {
 				//Apply from last applied to current commit index
+				raft.Lock.Lock()
 				raft.Log[i].COMMITTED = true
+				raft.Lock.Unlock()
+
 				raft.kvChan <- raft.Log[i]
 			}
 
@@ -112,41 +109,4 @@ func (raft *Raft) appendEntries(args AppendRPCArgs) bool {
 		return false
 	}
 
-}
-
-//Fake RPC call to followers
-//Not being used now.
-func (raft *Raft) appendRPC(server ServerConfig, args AppendRPCArgs, reply *AppendRPCResults) error {
-	//Should be actual RPC
-	//Actual code commented below with same function name
-
-	//Error simulator code starts
-	//State of this server
-	switch serverState[raft.ServerID] {
-
-	case KILLED, DROP_MSG:
-		return nil
-	}
-
-	//State of server to which append is sent
-	switch serverState[server.Id] {
-
-	case KILLED, DROP_MSG:
-		return errors.New("Server down")
-	}
-	//Error simulator code ends
-
-	raftMapLock.Lock()
-	remoteRaft, exists := raftMap[server.Id]
-	raftMapLock.Unlock()
-
-	if !exists {
-		return errors.New("Server unavailable")
-	}
-
-	responseCh := make(chan AppendRPCResults, 5)
-	remoteRaft.eventCh <- AppendRPC{args, responseCh}
-	*reply = <-responseCh
-
-	return nil
 }

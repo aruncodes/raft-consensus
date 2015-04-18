@@ -10,7 +10,6 @@ const (
 	Follower  = "Follower"
 	Leader    = "Leader"
 	Candidate = "Candidate"
-	Killed    = "Killed" //For testing
 )
 
 const (
@@ -52,31 +51,9 @@ func (raft *Raft) loop() {
 		case Leader:
 			raft.Leader()
 
-		case Killed: //Testing purposes
-			raft.Killed()
-
 		default:
 			raft.LogState("Unknown state")
 			break
-		}
-	}
-}
-
-func (raft *Raft) Killed() {
-
-	for {
-		event := <-raft.eventCh
-
-		switch event.(type) {
-
-		case ErrorSimulation:
-			ev := event.(ErrorSimulation)
-			raft.State = ev.State
-			return
-
-		default:
-			raft.LogState("Received something while dead")
-			continue
 		}
 	}
 }
@@ -144,25 +121,19 @@ func (raft *Raft) Follower() {
 				err := raft.WriteStateToFile(FILENAME)
 				checkError(err)
 
+				//Again wait since someone is a candidate
+				r := time.Duration(rand.Intn(100)) * time.Millisecond
+				timer.Reset(followerTimeout + r)
+
 			} else {
 				raft.LogState("Vote request rejected")
 			}
 
 			ev.responseCh <- RequestVoteResult{raft.Term, voted} //Actual vote
 
-			//Again wait since someone is a candidate
-			r := time.Duration(rand.Intn(100)) * time.Millisecond
-			timer.Reset(followerTimeout + r)
-
 		case Timeout:
 			raft.LogState("Time out received")
 			raft.State = Candidate
-			return
-
-		case ErrorSimulation:
-			ev := event.(ErrorSimulation)
-			raft.State = ev.State
-			timer.Stop()
 			return
 
 		default:
@@ -266,12 +237,6 @@ func (raft *Raft) Leader() {
 				timer.Stop()
 				return //State could be changed while heart beating
 			}
-
-		case ErrorSimulation:
-			ev := event.(ErrorSimulation)
-			raft.State = ev.State
-			timer.Stop()
-			return
 
 		default:
 			raft.LogState("Unknown received")
@@ -418,12 +383,6 @@ func (raft *Raft) Candidate() {
 				//isolated
 			}
 			return //Come back as candidate since state is not changed
-
-		case ErrorSimulation:
-			ev := event.(ErrorSimulation)
-			raft.State = ev.State
-			timer.Stop()
-			return
 
 		default:
 			raft.LogState("Unknown received")

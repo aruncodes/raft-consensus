@@ -15,16 +15,11 @@ func (raft *Raft) sendHeartBeat(server ServerConfig, ackChannel chan bool) {
 
 	prevLogIndex := raft.NextIndex[server.Id] - 1
 	prevLogTerm := raft.Log[prevLogIndex].Term
-	// prevLogTerm := uint64(0)
-	// if len(raft.Log) < int(prevLogIndex) && prevLogIndex > 0 {
-	// 	prevLogTerm = raft.Log[prevLogIndex].Term
-	// }
 
 	args := AppendRPCArgs{raft.Term, raft.LeaderID,
 		prevLogIndex, prevLogTerm, logSlice, uint64(raft.CommitIndex)} //Send slice with new entires
 
-	var reply AppendRPCResults //reply from RPC
-	// err := raft.appendRPC(server, args, &reply) //Make fake RPC
+	var reply AppendRPCResults                         //reply from RPC
 	err := raft.appendEntiresRPC(server, args, &reply) //Make RPC
 
 	if err != nil {
@@ -48,9 +43,11 @@ func (raft *Raft) sendHeartBeat(server ServerConfig, ackChannel chan bool) {
 	}
 
 	if reply.Success {
+		lastIndex := len(raft.Log) - 1
+		lastLsn := raft.Log[lastIndex].Lsn()
 		//Update nextIndex and matchIndex
-		raft.NextIndex[server.Id] = raft.LastLsn() + 1
-		raft.MatchIndex[server.Id] = raft.LastLsn() + 1
+		raft.NextIndex[server.Id] = lastLsn + 1
+		raft.MatchIndex[server.Id] = lastLsn + 1
 	} else {
 		//Log inconsistency
 		//Decrement nextIndex and retry

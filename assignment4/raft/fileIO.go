@@ -139,9 +139,11 @@ func (raft *Raft) ReadStateFromFile(filePath string) error {
 	Term, VotedFor, Log := raft.BytesToState(data)
 
 	//Restore persistant raft state
+	raft.Lock.Lock()
 	raft.Term = Term
 	raft.VotedFor = VotedFor
 	raft.Log = Log
+	raft.Lock.Unlock()
 
 	log.Println("Restored state: Term:", Term, "Voted for:", VotedFor /*, "Log:", Log*/)
 

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io/ioutil"
 	"log"
-	// "os"
 	"strconv"
 	"sync"
 )
@@ -152,18 +151,12 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 
 	go raft.RPCListener() //Start RPC Listener
 
-	// if raftMap == nil {
-	// 	raftMap = make(map[int]*Raft)
-	// }
-	// raftMap[thisServerId] = &raft
-
 	log.Print("Raft init, Server id:" + strconv.Itoa(raft.ServerID))
 	return &raft, nil
 }
 
 func ReadConfig() error {
 	//Get config.json file current working dir
-	// filePath := os.Getenv("GOPATH") + "/src/assignment3/config.json"
 	filePath := "config.json"
 	file, err := ioutil.ReadFile(filePath)
 	if err != nil {
@@ -183,7 +176,13 @@ func ReadConfig() error {
 }
 
 func (raft *Raft) LastLsn() Lsn {
-	return raft.Log[len(raft.Log)-1].Lsn()
+
+	raft.Lock.Lock()
+	lastIndex := len(raft.Log) - 1
+	lastLsn := raft.Log[lastIndex].Lsn()
+	raft.Lock.Unlock()
+
+	return lastLsn
 }
 
 // ErrRedirect as an Error object

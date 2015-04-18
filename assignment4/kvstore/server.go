@@ -34,12 +34,6 @@ type value struct {
 	numbytes, version, exptime int64
 }
 
-// var kvstore map[string]value        //KV Store
-// var commitCh chan raft.LogEntry     //Channel from raft to KV Store
-// var kvResponse chan KVResponse      //Response channel
-// var clientMap map[raft.Lsn]net.Conn //Save all client connections with their Lsn
-// var raftObj *raft.Raft //Raft
-
 func main() {
 
 	if !LOG_MESSAGES { //Disable debuging
@@ -67,15 +61,6 @@ func main() {
 		return
 	}
 
-	/*for i := 0; i <= 4; i++ { //Create 5 go routines representing 5 raft servers
-
-		//Start server
-		if i == 4 {
-			startServer(i)
-		} else {
-			go startServer(i)
-		}
-	}*/
 	startServer(int(serverID))
 }
 

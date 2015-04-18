@@ -31,11 +31,14 @@ func main() {
 	LogVerbose("Tester starting..")
 
 	liveServers = make([]*exec.Cmd, NUM_SERVERS)
-	ResetServerState()
 
+	ResetServerState()
 	TestElectionAndReplication()
+
+	ResetServerState()
 	TestStress()
 
+	ResetServerState()
 	LogVerbose("Tester finished!")
 
 	fmt.Println("----------------------")
@@ -171,7 +174,7 @@ func TestStress() {
 		//Restart Server
 		LogVerbose("Restart Server ", leaderId)
 		startSingleServer(leaderId)
-		time.Sleep(2 * time.Second)
+		time.Sleep(waitSec)
 
 		//Connect to new leader
 		conn, leaderId = connectToLeader(0)
@@ -192,6 +195,9 @@ func TestStress() {
 			response := TCPRead(conn)
 			checkIfExpected(response[:5], "VALUE")
 		}
+
+		//Wait till state is saved
+		time.Sleep(time.Second)
 
 		conn.Close()
 	}
