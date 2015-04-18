@@ -38,6 +38,8 @@ type Timeout struct {
 
 func (raft *Raft) loop() {
 
+	rand.Seed(time.Now().Unix())
+
 	for {
 		switch raft.State {
 

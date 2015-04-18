@@ -96,8 +96,6 @@ func handleOneCommand(clientConn net.Conn, response KVResponse, raftObj *raft.Ra
 		}
 		// Everything upto here (parsing command) is fine
 
-		//Future TODO: encode command struct to byte stream
-
 		//Append to log , add to client map and wait for client handler to
 		// continue handling when the response comes back
 
@@ -112,9 +110,9 @@ func handleOneCommand(clientConn net.Conn, response KVResponse, raftObj *raft.Ra
 			if !ret {
 				log.Print("Client disconnected/broken pipe")
 				clientConn.Close()
-				break
 			}
 
+			break
 		}
 
 		//Add to client map
